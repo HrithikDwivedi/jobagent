@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<!-- SYNTHETIC fixture mimicking the jobs.ashbyhq.com/<org>/<id>/application single-page form (label-based fields,
+     hidden file input behind an "Upload File" button, Yes/No button questions, in-page success container). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Software Engineer @ Acme</title>
+{{CAPTCHA_HEAD}}
+<style>body{font-family:sans-serif;max-width:760px;margin:20px auto} .ashby-application-form-field-entry{margin:12px 0}
+button[aria-pressed=true]{background:#335;color:#fff}</style>
+</head>
+<body>
+<div id="root">
+<div class="ashby-job-posting-heading"><h1>Software Engineer</h1><p>Toronto, Canada</p></div>
+<div class="ashby-application-form-container" id="form">
+  <div class="ashby-application-form-field-entry _required">
+    <label class="ashby-application-form-question-title" for="_systemfield_name">Name</label>
+    <input id="_systemfield_name" name="_systemfield_name" type="text" required>
+  </div>
+  <div class="ashby-application-form-field-entry _required">
+    <label class="ashby-application-form-question-title" for="_systemfield_email">Email</label>
+    <input id="_systemfield_email" name="_systemfield_email" type="email" required>
+  </div>
+  <div class="ashby-application-form-field-entry">
+    <label class="ashby-application-form-question-title" for="a1b2c3d4-0000-4000-8000-000000000001">Phone</label>
+    <input id="a1b2c3d4-0000-4000-8000-000000000001" name="a1b2c3d4-0000-4000-8000-000000000001" type="tel">
+  </div>
+  <div class="ashby-application-form-field-entry _required">
+    <label class="ashby-application-form-question-title" for="_systemfield_resume">Resume</label>
+    <div><button type="button" onclick="document.getElementById('_systemfield_resume').click()">Upload File</button></div>
+    <input id="_systemfield_resume" name="_systemfield_resume" type="file" style="display:none" required>
+  </div>
+  <div class="ashby-application-form-field-entry">
+    <label class="ashby-application-form-question-title" for="a1b2c3d4-0000-4000-8000-000000000002">Cover letter</label>
+    <textarea id="a1b2c3d4-0000-4000-8000-000000000002" name="a1b2c3d4-0000-4000-8000-000000000002"></textarea>
+  </div>
+  <div class="ashby-application-form-field-entry">
+    <label class="ashby-application-form-question-title" for="a1b2c3d4-0000-4000-8000-000000000003">LinkedIn</label>
+    <input id="a1b2c3d4-0000-4000-8000-000000000003" name="a1b2c3d4-0000-4000-8000-000000000003" type="text">
+  </div>
+  <div class="ashby-application-form-field-entry _required">
+    <label class="ashby-application-form-question-title" for="a1b2c3d4-0000-4000-8000-000000000004">What country are you based in?</label>
+    <input id="a1b2c3d4-0000-4000-8000-000000000004" name="a1b2c3d4-0000-4000-8000-000000000004" type="text" required>
+  </div>
+  <div class="ashby-application-form-field-entry">
+    <label class="ashby-application-form-question-title" for="a1b2c3d4-0000-4000-8000-000000000005">Notice Period</label>
+    <input id="a1b2c3d4-0000-4000-8000-000000000005" name="a1b2c3d4-0000-4000-8000-000000000005" type="text">
+  </div>
+  <div class="ashby-application-form-field-entry _required">
+    <label class="ashby-application-form-question-title">Are you legally authorized to work in Canada?</label>
+    <div class="_yesno"><button type="button">Yes</button><button type="button">No</button></div>
+    <input type="checkbox" name="a1b2c3d4-0000-4000-8000-000000000006" style="display:none">
+  </div>
+  <div class="ashby-application-form-field-entry _required">
+    <label class="ashby-application-form-question-title">Will you now or in the future require visa sponsorship?</label>
+    <div class="_yesno"><button type="button">Yes</button><button type="button">No</button></div>
+    <input type="checkbox" name="a1b2c3d4-0000-4000-8000-000000000007" style="display:none">
+  </div>
+  {{EXTRA}}
+  {{CAPTCHA_BODY}}
+  <div id="errors"></div>
+  <button type="submit" class="ashby-application-form-submit-button">Submit Application</button>
+</div>
+</div>
+<script>
+var answers = {};
+document.querySelectorAll('._yesno').forEach(function (g) {
+  var cb = g.parentElement.querySelector('input[type=checkbox]');
+  g.querySelectorAll('button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      g.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
+      b.setAttribute('aria-pressed', 'true');
+      answers[cb.name] = b.textContent.trim();
+      cb.checked = b.textContent.trim() === 'Yes';
+    });
+  });
+});
+document.querySelector('.ashby-application-form-submit-button').addEventListener('click', function () {
+  var form = document.getElementById('form');
+  var missing = [];
+  form.querySelectorAll('.ashby-application-form-field-entry._required').forEach(function (entry) {
+    var yn = entry.querySelector('._yesno');
+    if (yn) { if (!answers[entry.querySelector('input').name]) missing.push(entry.querySelector('label').textContent); return; }
+    var e = entry.querySelector('input,textarea,select');
+    if (e.type === 'file' ? !e.files.length : !e.value) missing.push(entry.querySelector('label').textContent);
+  });
+  if (missing.length) { document.getElementById('errors').textContent = 'Missing: ' + missing.join('; '); return; }
+  var fd = new FormData();
+  form.querySelectorAll('input,textarea,select').forEach(function (e) {
+    if (!e.name || e.type === 'checkbox') return;
+    if (e.type === 'file') { if (e.files.length) fd.append(e.name, e.files[0]); }
+    else fd.append(e.name, e.value);
+  });
+  Object.keys(answers).forEach(function (k) { fd.append(k, answers[k]); });
+  fetch('{{ACTION}}', {method: 'POST', body: fd}).then(function (r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function (j) {
+    if (j && j.success) {
+      form.innerHTML = '<div class="ashby-application-form-success-container"><h2>Thank you for applying</h2>' +
+        '<p>Your application was successfully submitted. We\'ll contact you if there are next steps.</p></div>';
+    }
+  }).catch(function (e) { document.getElementById('errors').textContent = 'Something went wrong. Please try again.'; });
+});
+</script>
+</body>
+</html>

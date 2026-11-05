@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Skills & Prep{% endblock %}
+{% block content %}
+{% set PROG = {"not_started": "Not started", "learning": "Learning", "practising": "Practising", "confident": "Confident"} %}
+<div class="page-head">
+  <div>
+    <h1>Skills & Prep</h1>
+    <p>Skill gaps across the jobs you are pursuing, and tailored interview preparation per job.</p>
+  </div>
+</div>
+
+<section class="card" aria-labelledby="gaps-h">
+  <h2 id="gaps-h">Skill gaps</h2>
+  {% if gaps %}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Skill</th><th scope="col" class="num">Jobs</th><th scope="col">Priority</th><th scope="col">Topics</th><th scope="col">Resource</th><th scope="col">Your progress</th></tr></thead>
+      <tbody>
+      {% for g in gaps %}
+        {% set p = progress.get(g.skill) %}
+        <tr>
+          <td><strong>{{ g.skill }}</strong></td>
+          <td class="num">{{ g.jobs }}</td>
+          <td><span class="badge b-{{ g.priority }}">{{ g.priority|capitalize }}</span></td>
+          <td class="small wrap-long">{{ g.topics|join(' · ') }}</td>
+          <td class="small">{{ m.ext(g.resource, 'Learn') if g.resource else '—' }}</td>
+          <td>
+            <form method="post" action="/prep/skill" class="stack-sm">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input type="hidden" name="skill" value="{{ g.skill }}">
+              <div class="field mb0">
+                <label for="ps-{{ loop.index }}" class="visually-hidden">Progress for {{ g.skill }}</label>
+                <select id="ps-{{ loop.index }}" name="status">
+                  {% for k, v in PROG.items() %}<option value="{{ k }}"{% if (p.status if p else 'not_started') == k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="field mb0">
+                <label for="pn-{{ loop.index }}" class="visually-hidden">Notes for {{ g.skill }}</label>
+                <input type="text" id="pn-{{ loop.index }}" name="notes" maxlength="1000" placeholder="Notes" value="{{ p.notes if p else '' }}">
+              </div>
+              <button type="submit" class="btn btn-sm">Save</button>
+              {% if p %}<div class="small muted">Updated {{ m.d(p.updated_at) }}</div>{% endif %}
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <div class="empty"><strong>No skill gaps yet</strong>Gaps appear once jobs you are applying to have been scored.</div>
+  {% endif %}
+</section>
+
+<h2 class="mt">Per-job preparation plans</h2>
+{% if plans %}
+  {% for p in plans %}
+    {% set pl = p.plan %}
+    <details class="disclosure">
+      <summary>{{ p.title }} — {{ p.employer }}</summary>
+      <div class="disclosure-body">
+        <p><a href="/jobs/{{ p.job_id }}">View job</a></p>
+        <div class="grid grid-3">
+          <div><h4>Demonstrated</h4><p class="small">{{ (pl.demonstrated or [])|join(', ') or '—' }}</p></div>
+          <div><h4>Partial</h4><p class="small">{{ (pl.partial or [])|join(', ') or '—' }}</p></div>
+          <div><h4>Missing</h4><p class="small">{{ (pl.missing or [])|join(', ') or '—' }}</p></div>
+        </div>
+        {% if pl.assessment %}<div class="alert alert-warn">{% for x in pl.assessment %}<p>{{ x }}</p>{% endfor %}</div>{% endif %}
+        {% if pl.languages %}<p class="small"><strong>Languages:</strong> {% for l in pl.languages %}{{ l.language }}{% if l.level %} ({{ l.level }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+        {% if pl.study_plan %}
+          <h4>Study plan</h4>
+          <ol>
+            {% for s in pl.study_plan %}
+              <li><strong>{{ s.skill }}</strong> <span class="badge b-{{ s.priority }}">{{ s.priority }}</span> <span class="small muted">{{ s.why }}</span>
+                <ul class="small">{% for t in s.topics %}<li>{{ t }}</li>{% endfor %}</ul>
+                {% if s.practice %}<p class="small">{{ s.practice }}</p>{% endif %}
+                {% if s.resource %}<p class="small">{{ m.ext(s.resource, 'Resource') }}</p>{% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+        {% endif %}
+        {% if pl.interview_topics %}
+          <h4>Interview topics on skills you have</h4>
+          <ul>{% for t in pl.interview_topics %}<li><strong>{{ t.skill }}:</strong> <span class="small">{{ t.topics|join(' · ') }}</span></li>{% endfor %}</ul>
+        {% endif %}
+        <div class="grid grid-3">
+          <div><h4>Data structures & algorithms</h4><ul class="small">{% for x in pl.dsa or [] %}<li>{{ x }}</li>{% endfor %}</ul></div>
+          <div><h4>System design</h4><ul class="small">{% for x in pl.system_design or [] %}<li>{{ x }}</li>{% endfor %}</ul></div>
+          <div><h4>Behavioural</h4><ul class="small">{% for x in pl.behavioral or [] %}<li>{{ x }}</li>{% endfor %}</ul></div>
+        </div>
+      </div>
+    </details>
+  {% endfor %}
+{% else %}
+  <div class="card empty"><strong>No prep plans yet</strong>Plans are created for jobs you are applying to. Start from <a href="/jobs">Jobs</a>.</div>
+{% endif %}
+{% endblock %}

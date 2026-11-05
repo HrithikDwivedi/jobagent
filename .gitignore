@@ -1,0 +1,18 @@
+# Secrets and local data - never commit
+.env
+data/
+*.db
+*.db-wal
+*.db-shm
+*.lock
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+.vercel
+.env*
+!.env.example
+reports/

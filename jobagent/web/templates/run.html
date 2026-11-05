@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Run {{ r.id[:8] }}{% endblock %}
+{% block content %}
+<p class="small"><a class="back-link" href="/runs"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#arrow-left"></use></svg> All runs</a></p>
+<div class="page-head">
+  <div>
+    <h1>Run <span class="fp">{{ r.id[:8] }}</span> <span class="badge b-{{ r.status }}">{{ r.status }}</span></h1>
+    <p>{{ r.kind }} · {{ r.trigger }} · started {{ m.dt(r.started_at) }} · finished {{ m.dt(r.finished_at) }}</p>
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="kpi-label">AI calls</div><div class="kpi-value">{{ r.ai_calls }}</div></div>
+  <div class="kpi"><div class="kpi-label">Tokens in / out</div><div class="kpi-value">{{ r.ai_tokens_in }} / {{ r.ai_tokens_out }}</div></div>
+  <div class="kpi"><div class="kpi-label">AI cost</div><div class="kpi-value">${{ '%.4f'|format(r.ai_cost_usd or 0) }}</div></div>
+  <div class="kpi{{ ' warn' if r.errors }}"><div class="kpi-label">Errors</div><div class="kpi-value">{{ r.errors|length }}</div></div>
+</div>
+
+<div class="grid grid-2">
+  <section class="card" aria-labelledby="stats-h">
+    <h2 id="stats-h">Statistics</h2>
+    {% if r.stats %}
+      <div class="table-wrap"><table>
+        <tbody>
+        {% for k, v in r.stats.items() %}
+          <tr><th scope="row">{{ k|replace('_', ' ') }}</th><td class="num">{% if v is iterable and v is not string %}{{ v|join(', ') or '—' }}{% else %}{{ v }}{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    {% else %}<p class="muted">No statistics recorded (the run may still be in progress).</p>{% endif %}
+  </section>
+  <section class="card" aria-labelledby="err-h">
+    <h2 id="err-h">Errors</h2>
+    {% if r.errors %}
+      <ul class="small">{% for e in r.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% else %}<p class="muted">No errors.</p>{% endif %}
+  </section>
+</div>
+
+<section class="card mt" aria-labelledby="src-h">
+  <h2 id="src-h">Sources</h2>
+  {% if r.sources %}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Source</th><th scope="col">Board</th><th scope="col" class="num">Jobs</th><th scope="col">Complete</th><th scope="col">Error / info</th></tr></thead>
+      <tbody>
+      {% for s in r.sources %}
+        <tr>
+          <td>{{ s.source }}</td>
+          <td>{{ s.board or '—' }}</td>
+          <td class="num">{{ s.jobs if s.jobs is defined and s.jobs is not none else '—' }}</td>
+          <td>{% if s.complete is sameas true %}<span class="badge b-green">Yes</span>{% elif s.complete is sameas false %}<span class="badge b-amber">No</span>{% else %}—{% endif %}</td>
+          <td class="small">{% if s.error %}<span class="badge b-red">Error</span> {{ s.error }}{% else %}{% for k, v in s.items() if k not in ['source', 'board', 'jobs', 'complete', 'error'] %}{{ k }}: {{ v }}{{ '; ' if not loop.last }}{% endfor %}{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}<p class="muted">No sources were queried.</p>{% endif %}
+</section>
+
+<section class="card mt" aria-labelledby="dec-h">
+  <div class="card-title">
+    <h2 id="dec-h">Decisions ({{ decisions|length }})</h2>
+    {% if decisions %}
+    <div class="field mb0">
+      <label for="dec-filter">Filter decisions</label>
+      <input type="search" id="dec-filter" data-filter-table="#decisions" data-filter-status="#dec-count" placeholder="e.g. new, prepared, closed">
+      <span class="hint" id="dec-count" aria-live="polite"></span>
+    </div>
+    {% endif %}
+  </div>
+  {% if decisions %}
+    <div class="table-wrap"><table id="decisions">
+      <thead><tr><th scope="col">Decision</th><th scope="col">Job</th><th scope="col">Reason</th><th scope="col">At</th></tr></thead>
+      <tbody>
+      {% for d in decisions %}
+        <tr>
+          <td><span class="badge b-{{ {'new': 'green', 'prepared': 'blue', 'shortlisted': 'teal', 'closed': 'grey', 'duplicate': 'grey', 'updated': 'amber', 'reopened': 'amber', 'invalid': 'red'}.get(d.decision, 'grey') }}">{{ d.decision }}</span></td>
+          <td>{% if d.job_id %}<a href="/jobs/{{ d.job_id }}">{{ d.title or ('Job #' ~ d.job_id) }}</a>{% if d.employer %}<div class="small muted">{{ d.employer }}</div>{% endif %}{% else %}—{% endif %}</td>
+          <td class="small">{{ d.reason }}</td>
+          <td class="nowrap small">{{ m.dt(d.at) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}<p class="muted">No decisions recorded.</p>{% endif %}
+</section>
+
+<section class="card mt" aria-labelledby="ai-h">
+  <h2 id="ai-h">AI usage</h2>
+  {% if usage %}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Model</th><th scope="col">Purpose</th><th scope="col" class="num">Calls</th><th scope="col" class="num">Cached</th><th scope="col" class="num">Tokens in</th><th scope="col" class="num">Tokens out</th><th scope="col" class="num">Cost</th></tr></thead>
+      <tbody>
+      {% for u in usage %}
+        <tr><td>{{ u.model }}</td><td>{{ u.purpose }}</td><td class="num">{{ u.calls }}</td><td class="num">{{ u.cached or 0 }}</td><td class="num">{{ u.tin or 0 }}</td><td class="num">{{ u.tout or 0 }}</td><td class="num">${{ '%.4f'|format(u.cost or 0) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}<p class="muted">No AI calls in this run.</p>{% endif %}
+</section>
+
+<section class="card mt" aria-labelledby="cfg-h">
+  <h2 id="cfg-h">Configuration snapshot</h2>
+  <p class="small muted">Secrets are redacted.</p>
+  <pre>{{ r.config|tojson(indent=2) }}</pre>
+</section>
+{% endblock %}

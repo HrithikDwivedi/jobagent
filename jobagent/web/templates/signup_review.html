@@ -1,0 +1,41 @@
+{% extends "_auth.html" %}
+{% block head_extra %}<meta name="robots" content="noindex">{% endblock %}
+{% block title %}Review sign-up{% endblock %}
+{% block card %}
+    {% if error %}
+      <div class="status-hero">
+        <div class="status-orb bad" aria-hidden="true"><svg><use href="/static/icons.svg#alert"></use></svg></div>
+        <h1>Link not usable</h1>
+      </div>
+      <div class="alert alert-error" role="alert">{{ error }}</div>
+      <p class="mb0">You can still manage sign-ups on the <a href="/admin/users">Admin page</a> after signing in.</p>
+    {% elif done %}
+      <div class="status-hero">
+        <div class="status-orb {{ 'ok' if done.action == 'approve' else 'bad' }}" aria-hidden="true"><svg><use href="/static/icons.svg#{{ 'check-circle' if done.action == 'approve' else 'x' }}"></use></svg></div>
+        <h1>{{ 'Account approved' if done.action == 'approve' else 'Request rejected' }}</h1>
+      </div>
+      <div class="alert alert-ok" role="status" data-review-result="{{ done.action }}">
+        {% if done.action == 'approve' %}
+          {{ done.user.full_name or done.user.username }} can now sign in. They have been notified by email.
+        {% else %}
+          The sign-up request from {{ done.user.full_name or done.user.username }} was rejected. They have been notified by email.
+        {% endif %}
+      </div>
+    {% elif info %}
+      <h1>{{ 'Approve' if info.action == 'approve' else 'Reject' }} this sign-up?</h1>
+      <dl class="facts">
+        <div><dt>Name</dt><dd>{{ info.user.full_name or '—' }}</dd></div>
+        <div><dt>Email</dt><dd>{{ info.user.email or '—' }}</dd></div>
+        <div><dt>Username</dt><dd>{{ info.user.username }}</dd></div>
+        <div><dt>Signed up</dt><dd>{{ (info.user.created_at or '')[:16]|replace('T', ' ') }} UTC</dd></div>
+      </dl>
+      <form method="post" action="/signup/review/{{ token }}">
+        <input type="hidden" name="pre_csrf" value="{{ pre_csrf }}">
+        <button type="submit" class="btn {{ 'btn-primary' if info.action == 'approve' else 'btn-danger' }} btn-lg btn-block">
+          <svg class="ico" aria-hidden="true"><use href="/static/icons.svg#{{ 'check' if info.action == 'approve' else 'x' }}"></use></svg>
+          {{ 'Approve account' if info.action == 'approve' else 'Reject request' }}
+        </button>
+      </form>
+      <p class="muted small mt mb0">This link works once and expires 7 days after the sign-up.</p>
+    {% endif %}
+{% endblock %}

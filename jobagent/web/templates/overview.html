@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Overview</h1>
+    <p>Your job search at a glance. Statistics exclude demo/sample data.</p>
+  </div>
+  <div class="actions"><a class="btn btn-primary" href="/jobs"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg> Browse jobs</a><a class="btn" href="/runs"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#runs"></use></svg> Agent runs</a></div>
+</div>
+
+{% if o.has_sample %}
+  <div class="alert alert-info" role="note"><strong>Demo/sample data present — excluded from statistics.</strong> Sample jobs are hidden from search and counts.</div>
+{% endif %}
+{% if pending_signups %}<div class="alert alert-info" role="status"><strong>{{ pending_signups }} sign-up request{{ "s" if pending_signups != 1 }} waiting.</strong> <a href="/admin/users">Review them</a></div>{% endif %}
+{% for p in config_problems %}
+  {% if loop.first %}<div class="alert alert-warn" role="alert"><strong>Configuration needs attention</strong><ul>{% endif %}
+  <li>{{ p }}</li>
+  {% if loop.last %}</ul></div>{% endif %}
+{% endfor %}
+
+{% if not resume or o.jobs_total == 0 %}
+<section class="card" aria-labelledby="onboard">
+  <h2 id="onboard">Get started</h2>
+  <ol class="checklist">
+    <li>{% if resume %}<span class="badge b-green">Done</span>{% else %}<span class="badge b-amber">To do</span>{% endif %} <a href="/studio">Upload your resume</a> in Resume Studio (it becomes your canonical resume).</li>
+    <li><a href="/settings#candidate">Confirm your candidate facts</a> (work authorisation, languages, notice period) — answers are never guessed.</li>
+    <li><a href="/settings#search">Choose target countries and roles</a>.</li>
+    <li>{% if o.jobs_total %}<span class="badge b-green">Done</span>{% else %}<span class="badge b-amber">To do</span>{% endif %} <a href="/runs">Run the agent</a> to discover and score jobs.</li>
+  </ol>
+</section>
+{% endif %}
+
+<h2 class="visually-hidden">Key figures</h2>
+<div class="kpis">
+  <a class="kpi" href="/jobs?include_closed=1"><div class="kpi-label">Jobs tracked</div><div class="kpi-value" data-count="{{ o.jobs_total }}">{{ o.jobs_total }}</div><div class="kpi-hint">all statuses</div></a>
+  <a class="kpi" href="/jobs"><div class="kpi-label">Open jobs</div><div class="kpi-value" data-count="{{ o.jobs_open }}">{{ o.jobs_open }}</div><div class="kpi-hint">currently listed</div></a>
+  <div class="kpi"><div class="kpi-label">New in last run</div><div class="kpi-value" data-count="{{ o.new_latest_run }}">{{ o.new_latest_run }}</div><div class="kpi-hint">{% if o.last_run %}{{ m.d(o.last_run.started_at) }}{% else %}no run yet{% endif %}</div></div>
+  <a class="kpi" href="/applications?status=submitted&amp;status=interview&amp;status=assessment&amp;status=offer&amp;status=rejected"><div class="kpi-label">Submitted</div><div class="kpi-value" data-count="{{ o.submitted_total }}">{{ o.submitted_total }}</div><div class="kpi-hint">with evidence</div></a>
+  <a class="kpi" href="/applications?status=awaiting_approval"><div class="kpi-label">Awaiting approval</div><div class="kpi-value" data-count="{{ o.awaiting_approval }}">{{ o.awaiting_approval }}</div><div class="kpi-hint">needs your review</div></a>
+  <a class="kpi" href="/applications?status=shortlisted&amp;status=ready_to_apply&amp;status=application_started"><div class="kpi-label">In progress</div><div class="kpi-value" data-count="{{ o.in_progress }}">{{ o.in_progress }}</div><div class="kpi-hint">shortlisted / ready / started</div></a>
+  <a class="kpi" href="/applications?status=interview&amp;status=assessment"><div class="kpi-label">Interviews</div><div class="kpi-value" data-count="{{ o.interviews }}">{{ o.interviews }}</div><div class="kpi-hint">incl. assessments</div></a>
+  <a class="kpi" href="/applications?status=offer"><div class="kpi-label">Offers</div><div class="kpi-value" data-count="{{ o.offers }}">{{ o.offers }}</div></a>
+  <a class="kpi" href="/applications?status=rejected"><div class="kpi-label">Rejections</div><div class="kpi-value" data-count="{{ o.rejections }}">{{ o.rejections }}</div></a>
+  <a class="kpi{{ ' warn' if o.problems }}" href="/applications?status=submission_failed&amp;status=submission_uncertain"><div class="kpi-label">Problems</div><div class="kpi-value" data-count="{{ o.problems }}">{{ o.problems }}</div><div class="kpi-hint">failed / uncertain</div></a>
+  <a class="kpi" href="/sponsorship"><div class="kpi-label">Sponsorship confirmed</div><div class="kpi-value" data-count="{{ o.sponsorship_confirmed }}">{{ o.sponsorship_confirmed }}</div><div class="kpi-hint">open jobs</div></a>
+  <div class="kpi"><div class="kpi-label">Average match</div><div class="kpi-value">{{ o.avg_score if o.avg_score is not none else '—' }}</div><div class="kpi-hint">open, scored jobs</div></div>
+</div>
+
+<div class="grid grid-2">
+  <section class="card" aria-labelledby="metrics">
+    <h2 id="metrics">Funnel metrics</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Metric</th><th scope="col" class="num">Value</th><th scope="col">Definition</th></tr></thead>
+      <tbody>
+      {% for x in o.metrics %}
+        <tr>
+          <td>{{ x.label }}</td>
+          <td class="num nowrap">{% if x.den == 0 %}—{% else %}{{ (100 * x.num / x.den)|round(1) }}% <span class="muted small">({{ x.num }}/{{ x.den }})</span>{% endif %}</td>
+          <td class="small muted">{{ x.definition }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <p class="small muted mt mb0">“—” means no submitted applications yet, so the rate is undefined.</p>
+  </section>
+
+  <section class="card" aria-labelledby="lastrun">
+    <h2 id="lastrun">Last agent run</h2>
+    {% if o.last_run %}
+      <p><span class="badge b-{{ o.last_run.status }}">{{ o.last_run.status }}</span> started {{ m.dt(o.last_run.started_at) }}{% if o.last_run.finished_at %}, finished {{ m.dt(o.last_run.finished_at) }}{% endif %} · {{ o.last_run.trigger }}</p>
+      <p>{{ o.new_latest_run }} new job{{ '' if o.new_latest_run == 1 else 's' }} discovered.</p>
+      {% if is_admin %}<a class="btn btn-sm" href="/runs/{{ o.last_run.id }}">View run details</a>{% endif %}
+    {% else %}
+      <div class="empty"><strong>No completed runs yet</strong>Start one from <a href="/runs">Agent Runs</a>.</div>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card mt" aria-labelledby="upcoming">
+  <h2 id="upcoming">Upcoming interviews, follow-ups and deadlines</h2>
+  {% if o.upcoming %}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Role</th><th scope="col">Employer</th><th scope="col">Interview</th><th scope="col">Follow-up</th><th scope="col">Deadline</th></tr></thead>
+      <tbody>
+      {% for u in o.upcoming %}
+        <tr><td><a href="/applications/{{ u.id }}">{{ u.title }}</a></td><td>{{ u.employer }}</td><td class="nowrap">{{ m.dt(u.interview_at) }}</td><td class="nowrap">{{ m.d(u.follow_up_at) }}</td><td class="nowrap">{{ m.d(u.deadline) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <div class="empty"><strong>Nothing scheduled</strong>Add interview and follow-up dates on an application.</div>
+  {% endif %}
+</section>
+
+<h2 class="section-title"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#chart"></use></svg> Charts</h2>
+<div class="grid grid-2">
+  <section class="card"><h3>Applications submitted per week</h3>{{ chart_weeks|safe }}</section>
+  <section class="card"><h3>Open jobs by country</h3>{{ chart_countries|safe }}</section>
+  <section class="card"><h3>Open jobs by seniority</h3>{{ chart_roles|safe }}</section>
+  <section class="card"><h3>Open jobs by sponsorship evidence</h3>{{ chart_sponsorship|safe }}</section>
+  <section class="card"><h3>Application outcomes</h3>{{ chart_outcomes|safe }}</section>
+</div>
+{% endblock %}

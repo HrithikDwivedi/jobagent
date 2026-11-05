@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Compare jobs{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Compare jobs</h1>
+    <p>Side-by-side view of up to four jobs.</p>
+  </div>
+  <a class="btn" href="/jobs"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#arrow-left"></use></svg> Back to jobs</a>
+</div>
+{% if jobs|length < 1 %}
+  <div class="card empty"><strong>Nothing to compare</strong>Tick 2–4 jobs on the <a href="/jobs">Jobs</a> page and press “Compare selected”.</div>
+{% else %}
+<div class="table-wrap">
+  <table>
+    <caption class="visually-hidden">Job comparison</caption>
+    <thead>
+      <tr><th scope="col">Attribute</th>{% for j in jobs %}<th scope="col"><a href="/jobs/{{ j.id }}">{{ j.title }}</a></th>{% endfor %}</tr>
+    </thead>
+    <tbody>
+      <tr><th scope="row">Employer</th>{% for j in jobs %}<td>{{ j.employer }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Location</th>{% for j in jobs %}<td>{{ m.location(j) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Work arrangement</th>{% for j in jobs %}<td>{{ m.REMOTE.get(j.remote_type, '—') }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Seniority</th>{% for j in jobs %}<td>{{ (j.seniority or 'unspecified')|capitalize }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Match score</th>{% for j in jobs %}<td>{{ m.score_circle(j.score) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Recommendation</th>{% for j in jobs %}<td>{{ m.rec_badge(j.recommendation) or '—' }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Sponsorship</th>{% for j in jobs %}<td>{{ m.spon_badge(j.sponsorship) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Salary</th>{% for j in jobs %}<td>{{ m.salary(j) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Posted</th>{% for j in jobs %}<td>{{ m.d(j.published_at or j.first_discovered_at) }}</td>{% endfor %}</tr>
+      {% for k, label in m.COMPONENTS.items() %}
+      <tr><th scope="row">{{ label }}</th>{% for j in jobs %}{% set c = ((j.details or {}).components or {}).get(k) %}<td>{% if c is not none %}<meter min="0" max="1" low="0.45" high="0.7" optimum="1" value="{{ c }}" aria-label="{{ label }}">{{ (c * 100)|round|int }}%</meter> {{ (c * 100)|round|int }}%{% else %}—{% endif %}</td>{% endfor %}</tr>
+      {% endfor %}
+      <tr><th scope="row">Reasons</th>{% for j in jobs %}<td class="small">{% if j.details.reasons %}<ul>{% for x in j.details.reasons %}<li>{{ x }}</li>{% endfor %}</ul>{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><th scope="row">Gaps</th>{% for j in jobs %}<td class="small">{% if j.details.gaps %}<ul>{% for x in j.details.gaps %}<li>{{ x }}</li>{% endfor %}</ul>{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><th scope="row">Disqualifiers</th>{% for j in jobs %}<td class="small">{% if j.details.disqualifiers %}<ul>{% for x in j.details.disqualifiers %}<li>{{ x }}</li>{% endfor %}</ul>{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><th scope="row">Effort</th>{% for j in jobs %}<td>{% if j.details.effort_minutes %}~{{ j.details.effort_minutes }} min{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><th scope="row">Application</th>{% for j in jobs %}<td>{% if j.app_id %}<a href="/applications/{{ j.app_id }}">{{ labels.get(j.app_status, j.app_status) }}</a>{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><th scope="row">Links</th>{% for j in jobs %}<td>{{ m.ext(j.canonical_url, 'Listing') }}</td>{% endfor %}</tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

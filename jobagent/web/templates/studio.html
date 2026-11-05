@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Resume Studio{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Resume Studio</h1>
+    <p>Your canonical resume, its analysis, and role/country variants that only reorder and retarget — never invent — facts.</p>
+  </div>
+</div>
+
+<div class="studio">
+  <div class="stack">
+    <section class="card" aria-labelledby="ver-h">
+      <h2 id="ver-h">Versions</h2>
+      {% if versions %}
+        <ul class="version-list">
+          {% for v in versions %}
+            <li><a href="/studio?v={{ v.id }}"{% if current and current.id == v.id %} aria-current="page"{% endif %}>
+              <div class="clamp2"><strong>{{ v.label }}</strong></div>
+              <div class="row small">
+                <span class="badge badge-outline">{{ v.kind }}</span>
+                {% if v.is_canonical %}<span class="badge b-canonical">Canonical</span>{% endif %}
+                <span class="badge b-{{ v.status }}">{{ v.status }}</span>
+              </div>
+              <div class="small muted">#{{ v.id }} · {{ m.d(v.created_at) }}</div>
+            </a></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="empty"><strong>No resume yet</strong>Upload one below.</div>
+      {% endif %}
+    </section>
+
+    <section class="card" aria-labelledby="up-h">
+      <h2 id="up-h">Upload resume</h2>
+      <form method="post" action="/studio/upload" enctype="multipart/form-data" data-overlay="resume">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="field">
+          <label for="resume">File <span class="hint">(PDF, DOCX or TXT, max 5 MB)</span></label>
+          <input type="file" id="resume" name="resume" accept=".pdf,.docx,.txt" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" data-loading-text="Analysing…"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#upload"></use></svg> Upload & analyse</button>
+        <p class="small muted mt mb0">Your original file is stored unchanged. The first upload becomes canonical.</p>
+      </form>
+    </section>
+
+    <section class="card" aria-labelledby="var-h">
+      <h2 id="var-h">Generate a variant</h2>
+      {% if canonical %}
+      <form method="post" action="/studio/variant" data-overlay="resume">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="field">
+          <label for="role_family">Role family</label>
+          <select id="role_family" name="role_family" required>
+            {% for k, fam in families.items() %}<option value="{{ k }}">{{ fam.label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="country">Target country</label>
+          <select id="country" name="country">
+            <option value="">General (no country)</option>
+            {% for code, name in countries|dictsort(by='value') %}<option value="{{ code }}">{{ name }}</option>{% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline" data-loading-text="Generating…"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#sparkle"></use></svg> Generate variant</button>
+      </form>
+      {% else %}
+        <p class="muted">Upload a resume first.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="stack">
+    {% if not current %}
+      <div class="card empty"><strong>No resume selected</strong>Upload your resume to get an analysis and tailored variants.</div>
+    {% else %}
+    <section class="card" aria-labelledby="cur-h">
+      <div class="card-title">
+        <div>
+          <h2 id="cur-h">{{ current.label }}</h2>
+          <div class="row small">
+            <span class="badge badge-outline">{{ current.kind }}</span>
+            {% if current.is_canonical %}<span class="badge b-canonical">Canonical</span>{% endif %}
+            <span class="badge b-{{ current.status }}">{{ current.status }}</span>
+            <span class="muted">#{{ current.id }} · {{ m.dt(current.created_at) }} · {{ current.method }}</span>
+          </div>
+        </div>
+        <div class="actions">
+          <a class="btn btn-sm" href="/studio/{{ current.id }}/download.pdf"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#download"></use></svg> Download PDF</a>
+          <a class="btn btn-sm" href="/studio/{{ current.id }}/download.docx"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#download"></use></svg> Download DOCX</a>
+          {% if current.kind == 'original' %}<a class="btn btn-sm" href="/studio/{{ current.id }}/download.original">Original file</a>{% endif %}
+        </div>
+      </div>
+
+      {% if current.kind == 'original' %}
+        {% set an = current.analysis or {} %}
+        <div class="kpis">
+          <div class="kpi"><div class="kpi-label">Resume score</div><div class="kpi-value"{% if an.score is not none %} data-count="{{ an.score|round|int }}"{% endif %}>{{ an.score if an.score is not none else '—' }}</div></div>
+          <div class="kpi"><div class="kpi-label">Experience</div><div class="kpi-value"{% if an.experience_months is not none %} data-count="{{ an.experience_months }}"{% endif %}>{{ an.experience_months if an.experience_months is not none else '—' }}</div><div class="kpi-hint">months (~{{ ((an.experience_months or 0) / 12)|round(1) }} years)</div></div>
+          <div class="kpi"><div class="kpi-label">Bullets with metrics</div><div class="kpi-value">{% if an.metric_ratio is not none %}{{ (an.metric_ratio * 100)|round|int }}%{% else %}—{% endif %}</div></div>
+          <div class="kpi"><div class="kpi-label">Bullets</div><div class="kpi-value"{% if an.bullet_count is not none %} data-count="{{ an.bullet_count }}"{% endif %}>{{ an.bullet_count if an.bullet_count is not none else '—' }}</div></div>
+        </div>
+        <div class="actions">
+          <form method="post" action="/studio/{{ current.id }}/reanalyze" class="inline">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button type="submit" class="btn btn-sm" data-loading-text="Analysing…"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#refresh"></use></svg> Re-analyse</button>
+          </form>
+        </div>
+        {% if not current.is_canonical %}
+          <form method="post" action="/studio/{{ current.id }}/canonical" class="mt">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <label class="check"><input type="checkbox" name="confirm" value="yes" required> Replace the current canonical resume with this one (variants and new applications will be based on it)</label>
+            <button type="submit" class="btn btn-sm btn-outline">Make canonical</button>
+          </form>
+        {% endif %}
+
+        <h3 class="mt">Issues & suggestions</h3>
+        {% set issues = an.issues or [] %}
+        {% if issues %}
+          {% for sev in ['high', 'medium', 'low'] %}
+            {% set group = issues|selectattr('severity', 'equalto', sev)|list %}
+            {% if group %}
+              <h4><span class="badge b-{{ sev }}">{{ sev|capitalize }}</span> {{ group|length }} issue{{ '' if group|length == 1 else 's' }}</h4>
+              <ul>
+                {% for i in group %}
+                  <li><strong>{{ i.message }}</strong> <span class="badge badge-outline">{{ i.category }}</span>{% if i.location %} <span class="small muted">({{ i.location }})</span>{% endif %}
+                    {% if i.suggestion %}<div class="small">Suggestion: {{ i.suggestion }}</div>{% endif %}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          {% endfor %}
+        {% else %}<p class="muted">No issues found.</p>{% endif %}
+
+        <h3 class="mt">Skill evidence</h3>
+        {% set ev = an.skill_evidence or {} %}
+        {% if ev %}
+          <div class="table-wrap"><table>
+            <thead><tr><th scope="col">Skill</th><th scope="col">Evidence</th></tr></thead>
+            <tbody>
+            {% for sk, lvl in ev|dictsort %}
+              <tr><td>{{ sk }}</td><td>{% if lvl == 'demonstrated' %}<span class="badge b-green">Demonstrated in a bullet</span>{% else %}<span class="badge b-amber">Listed only</span>{% endif %}</td></tr>
+            {% endfor %}
+            </tbody>
+          </table></div>
+        {% else %}<p class="muted">—</p>{% endif %}
+      {% else %}
+        {# ---- variant #}
+        <p class="small muted">Variant of #{{ current.parent_id }}{% if current.role_family %} · {{ (families.get(current.role_family) or {}).get('label', current.role_family) }}{% endif %}{% if current.target_country %} · {{ countries.get(current.target_country, current.target_country) }}{% endif %}</p>
+        <form method="post" action="/studio/{{ current.id }}/status" class="row">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <label for="vstatus">Status</label>
+          <select id="vstatus" name="status">
+            {% for s in ['draft', 'approved', 'archived'] %}<option value="{{ s }}"{% if current.status == s %} selected{% endif %}>{{ s|capitalize }}</option>{% endfor %}
+          </select>
+          <button type="submit" class="btn btn-sm">Update status</button>
+        </form>
+
+        {% set st = current.style or {} %}
+        {% set ats = st.ats %}
+        {% if ats %}
+          <section class="ats-panel mt" aria-labelledby="ats-h">
+            <div class="ats-head">
+              {{ m.score_circle(ats.score, True) }}
+              <div class="grow">
+                <h3 id="ats-h">ATS score</h3>
+                <span class="badge {{ 'b-green' if ats.score >= (ats.target or 95) else 'b-amber' }}">{{ ats.score }} / 100 · target {{ ats.target or 95 }}</span>
+              </div>
+            </div>
+            {% for name, c in (ats.components or {}).items() %}
+              <div class="bar-row">
+                <span>{{ name|replace('_', ' ')|capitalize }}</span>
+                <meter min="0" max="{{ c.max }}" value="{{ c.score }}" low="{{ c.max * 0.6 }}" high="{{ c.max * 0.9 }}" optimum="{{ c.max }}" aria-label="{{ name }} {{ c.score }} of {{ c.max }}">{{ c.score }}/{{ c.max }}</meter>
+                <span class="small">{{ c.score }} / {{ c.max }}</span>
+              </div>
+            {% endfor %}
+            {% if ats.blockers %}
+              <div class="alert alert-warn mt" role="note"><strong>Why it can't honestly go higher:</strong>
+                <ul class="small">{% for b in ats.blockers %}<li>{{ b }}</li>{% endfor %}</ul>
+                <p class="small">JobAgent never adds skills you don't have. Learn them (see Skills &amp; Prep) or add a truthful bullet to your master resume if you have used them.</p>
+              </div>
+            {% endif %}
+            {% if ats.matched_keywords %}<p class="small"><strong>Matched keywords:</strong> {{ ats.matched_keywords[:30]|join(', ') }}</p>{% endif %}
+            {% if ats.missing_keywords %}<p class="small"><strong>Missing:</strong> {% for k in ats.missing_keywords[:15] %}{{ k.keyword if k.keyword is defined else k }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+          </section>
+        {% endif %}
+        {% if st.coverage and st.coverage.must_have %}
+          <h3 class="mt">Job requirements vs your resume</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th scope="col">Requirement</th><th scope="col">Status</th><th scope="col">Evidence</th></tr></thead>
+            <tbody>
+            {% for r in st.coverage.must_have %}
+              <tr><td>{{ r.skill }}</td>
+                <td><span class="badge {{ {'have': 'b-green', 'partial': 'b-amber', 'missing': 'b-red'}.get(r.status, 'b-grey') }}">{{ r.status|capitalize }}</span></td>
+                <td class="small wrap-long">{{ r.evidence or '—' }}</td></tr>
+            {% endfor %}
+            </tbody>
+          </table></div>
+        {% endif %}
+        {% if st.warnings %}<details class="mt"><summary>Tailoring notes ({{ st.warnings|length }})</summary><ul class="small">{% for w in st.warnings %}<li>{{ w }}</li>{% endfor %}</ul></details>{% endif %}
+
+        <h3 class="mt">Changes from the canonical resume</h3>
+        {% if current.changes %}
+          <div class="table-wrap"><table>
+            <thead><tr><th scope="col">Section</th><th scope="col">Before</th><th scope="col">After</th><th scope="col">Reason</th></tr></thead>
+            <tbody>
+            {% for c in current.changes %}
+              <tr><td>{{ c.section }}</td><td class="small wrap-long">{{ c.before if c.before is not none else '—' }}</td><td class="small wrap-long">{{ c.after if c.after is not none else '—' }}</td><td class="small">{{ c.reason }}</td></tr>
+            {% endfor %}
+            </tbody>
+          </table></div>
+        {% else %}<p class="muted">No changes recorded.</p>{% endif %}
+
+        {% if diff %}
+          <h3 class="mt">Text diff</h3>
+          <div class="diff" role="region" aria-label="Diff against canonical resume" tabindex="0">
+            {% for line in diff %}<div class="{{ 'add' if line.startswith('+') and not line.startswith('+++') else ('del' if line.startswith('-') and not line.startswith('---') else ('hunk' if line.startswith('@@') else '')) }}">{{ line }}</div>{% endfor %}
+          </div>
+        {% endif %}
+
+        <h3 class="mt">Edit summary</h3>
+        <form method="post" action="/studio/{{ current.id }}/summary">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <div class="field">
+            <label for="summary">Summary</label>
+            <textarea id="summary" name="summary" maxlength="2000">{{ (current.structured or {}).summary or '' }}</textarea>
+            <span class="hint">New numbers or skills not on your canonical resume are rejected.</span>
+          </div>
+          <button type="submit" class="btn btn-sm btn-primary">Save summary</button>
+        </form>
+      {% endif %}
+    </section>
+
+    {% if text %}
+    <section class="card" aria-labelledby="txt-h">
+      <div class="card-title"><h2 id="txt-h">Text preview</h2><button type="button" class="btn btn-sm" data-copy-target="#resume-text" hidden>Copy</button></div>
+      <pre id="resume-text">{{ text }}</pre>
+    </section>
+    {% endif %}
+    {% endif %}
+
+    <section class="card" aria-labelledby="cl-h">
+      <h2 id="cl-h">Cover letters</h2>
+      {% if letters %}
+        <div class="table-wrap"><table>
+          <thead><tr><th scope="col">Job</th><th scope="col">Version</th><th scope="col">Method</th><th scope="col">Status</th><th scope="col">Created</th></tr></thead>
+          <tbody>
+          {% for c in letters %}
+            <tr><td><a href="/letters/{{ c.id }}">{{ c.title }}</a><div class="small muted">{{ c.employer }}</div></td><td>v{{ c.version }}</td><td>{{ c.method }}</td><td><span class="badge b-{{ c.status }}">{{ c.status }}</span></td><td class="nowrap small">{{ m.d(c.created_at) }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table></div>
+      {% else %}
+        <div class="empty"><strong>No cover letters yet</strong>They are drafted when an application package is prepared.</div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

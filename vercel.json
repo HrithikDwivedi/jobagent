@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastapi",
+  "functions": {
+    "app.py": {
+      "maxDuration": 300,
+      "includeFiles": "jobagent/**"
+    }
+  },
+  "crons": [
+    { "path": "/api/cron/run", "schedule": "30 3 * * *" }
+  ]
+}

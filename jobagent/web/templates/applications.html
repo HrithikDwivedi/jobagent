@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Applications{% endblock %}
+{% macro app_card(r) -%}
+<a class="app-card" href="/applications/{{ r.id }}">
+  <div class="job-head-row">
+    {{ m.mono(r.employer) }}
+    <div class="grow">
+      <div class="t clamp2">{{ r.title }}</div>
+      <div class="truncate">{{ r.employer }}</div>
+    </div>
+  </div>
+  <div class="small muted">{{ m.location(r) }}</div>
+  <div class="row small mt">
+    {% if r.score is not none %}<span class="badge badge-outline">Match {{ r.score|round|int }}</span>{% endif %}
+    {{ m.spon_badge(r.sponsorship, True) }}
+    {% if r.external %}<span class="badge b-grey">External</span>{% endif %}
+    {% if r.job_status and r.job_status != 'open' %}{{ m.job_status_badge(r.job_status) }}{% endif %}
+  </div>
+  {% if r.interview_at %}<div class="small mt"><strong>Interview:</strong> {{ m.dt(r.interview_at) }}</div>{% endif %}
+  {% if r.follow_up_at %}<div class="small"><strong>Follow up:</strong> {{ m.d(r.follow_up_at) }}</div>{% endif %}
+  <div class="small muted">Updated {{ m.dt(r.updated_at) }}</div>
+</a>
+{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Applications</h1>
+    <p>Every application, from shortlisted to offer. Submitted means confirmed with evidence.</p>
+  </div>
+</div>
+
+<nav class="chips" aria-label="Filter by status">
+  <a class="chip" href="/applications"{% if not status %} aria-current="true"{% endif %}>All</a>
+  {% for k, v in labels.items() if k != 'discovered' %}
+    <a class="chip" href="/applications?status={{ k }}"{% if k in status %} aria-current="true"{% endif %}>{{ v }}</a>
+  {% endfor %}
+</nav>
+
+{% if not rows %}
+  <div class="card empty">
+    {% if status %}
+      <strong>No applications with this status</strong><a href="/applications">Show all applications</a>
+    {% else %}
+      <strong>No applications yet</strong>Open a job and press “Apply with agent”, or let the agent prepare drafts during a run.
+      <div class="mt"><a class="btn btn-primary" href="/jobs">Browse jobs</a></div>
+    {% endif %}
+  </div>
+{% else %}
+  <p class="muted small">{{ rows|length }} application{{ '' if rows|length == 1 else 's' }}</p>
+  <div class="kanban" aria-label="Applications grouped by status">
+    {% for k, v in labels.items() if k in groups %}
+      <section class="lane" aria-labelledby="lane-{{ k }}">
+        <h2 id="lane-{{ k }}"><span>{{ m.status_badge(k) }}</span><span class="lane-count">{{ groups[k]|length }}</span></h2>
+        {% for r in groups[k] %}{{ app_card(r) }}{% endfor %}
+      </section>
+    {% endfor %}
+  </div>
+  <div class="app-list" aria-label="Applications list">
+    {% for r in rows %}
+      <div class="row between small">{{ m.status_badge(r.status) }}</div>
+      {{ app_card(r) }}
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,57 @@
+name: auto-apply
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"     # every 3 hours
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (fill in a throwaway browser, never submit, no state change)"
+        type: boolean
+        default: false
+      limit:
+        description: "Max applications this run (empty = policy max_per_run)"
+        required: false
+        default: ""
+
+concurrency:
+  group: autoapply
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  autoapply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-worker.txt
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-worker.txt
+          python -m playwright install --with-deps chromium
+      - name: Auto-apply (headless; CAPTCHA-protected forms are handed back to you)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JOBAGENT_SECRET_KEY: ${{ secrets.JOBAGENT_SECRET_KEY }}
+          JOBAGENT_AI_PROVIDER: ${{ secrets.JOBAGENT_AI_PROVIDER }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          JOBAGENT_DATA_DIR: ${{ runner.temp }}/jobagent
+          DRY_RUN: ${{ inputs.dry_run }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          args=""
+          if [ "$DRY_RUN" = "true" ]; then args="$args --dry-run"; fi
+          if [ -n "$LIMIT" ]; then args="$args --limit $LIMIT"; fi
+          python -m jobagent autoapply $args
+      # Deliberately NO upload-artifact step: screenshots and forms contain personal data. Evidence screenshots of
+      # confirmed submissions are stored in the database (files table) and shown in the dashboard.

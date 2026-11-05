@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ job.title if job else 'Application' }}{% endblock %}
+{% block content %}
+{% set st = a.status %}
+{% set editable = st in ['awaiting_approval', 'shortlisted'] %}
+{% set dest = a.submitted_url or (job.apply_url if job else None) %}
+{% set stage = {'shortlisted': 0, 'awaiting_approval': 1, 'ready_to_apply': 2, 'application_started': 3, 'submission_uncertain': 3, 'submission_failed': 3, 'submitted': 4, 'rejected': 4, 'interview': 5, 'assessment': 5, 'offer': 5}.get(st, -1) %}
+
+<p class="small"><a class="back-link" href="/applications"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#arrow-left"></use></svg> All applications</a></p>
+<div class="page-head">
+  <div class="grow">
+    <h1>{{ job.title if job else 'Job #' ~ a.job_id }}</h1>
+    <div class="row">
+      <strong>{{ job.employer if job else '—' }}</strong>
+      {% if job %}<span class="muted">· {{ m.location(job) }}</span>{% endif %}
+    </div>
+    <div class="row mt">
+      {{ m.status_badge(st) }}
+      {% if job %}{{ m.job_status_badge(job.status) }}{% endif %}
+      {% if a.external %}<span class="badge b-grey">Applied outside JobAgent</span>{% endif %}
+      {% if a.auto_apply %}<span class="badge b-teal">Auto-apply</span>{% endif %}
+      {% if job %}{{ m.spon_badge(job.sponsorship) }}{% endif %}
+      {% if job and job.score is not none %}<span class="badge badge-outline">Match {{ job.score|round|int }}</span>{% endif %}
+    </div>
+  </div>
+  {% if job %}<a class="btn" href="/jobs/{{ job.id }}">View job details</a>{% endif %}
+</div>
+
+{% set handback = (events|selectattr('action', 'equalto', 'autoapply_handback')|list|last) if events else none %}
+{% if handback and st == 'awaiting_approval' %}
+  <div class="alert alert-warn" role="status">
+    <strong>Auto-apply handed this one back to you</strong> ({{ m.dt(handback.at) }}): {{ handback.detail.reason or handback.detail.code }}
+    {% if handback.detail.unknown_questions %}
+      <p class="small mt">Questions it could not answer from your confirmed facts (answer them on the employer's form, or add the facts in Settings):</p>
+      <ul class="small">{% for q in handback.detail.unknown_questions[:10] %}<li>{{ q }}</li>{% endfor %}</ul>
+    {% endif %}
+    <p class="small">You can still review and approve below, then submit on the employer's site yourself.</p>
+  </div>
+{% endif %}
+
+{% if request.query_params.get('opened') and st in ['application_started', 'submission_uncertain'] %}
+  <div class="callout" role="status">
+    <h2>Your approval was used — now submit on the employer’s site</h2>
+    <p>Open the official application page, complete the form there, then come back and record the outcome below.</p>
+    {% if dest and dest.startswith('https://') %}
+      <a class="btn btn-primary btn-lg" href="{{ dest }}" target="_blank" rel="noopener noreferrer">Open official application page ↗</a>
+    {% else %}<p class="alert alert-error">No secure (https) application URL is available for this job.</p>{% endif %}
+  </div>
+{% endif %}
+
+<ol class="stepper" aria-label="Application progress">
+  {% for label in ['Prepared', 'Approved', 'Opened on employer site', 'Submitted (with evidence)', 'Interview / Offer'] %}
+    {% set i = loop.index0 %}
+    {% set bad = (i == 3 and st in ['submission_failed', 'submission_uncertain']) or (i == 4 and st == 'rejected') %}
+    <li class="{{ 'bad' if bad else ('done' if i < stage else ('current' if i == stage else '')) }}"{% if i == stage %} aria-current="step"{% endif %}>{{ label }}{% if bad %} — {{ labels.get(st) }}{% endif %}</li>
+  {% endfor %}
+</ol>
+{% if st in ['withdrawn', 'closed'] %}<div class="alert alert-info">This application is <strong>{{ labels.get(st) }}</strong>.</div>{% endif %}
+
+{# ---------------------------------------------------------------- what will be sent #}
+<section class="card" aria-labelledby="sent">
+  <div class="card-title"><h2 id="sent">What will be sent</h2>{% if editable %}<span class="badge b-amber">Editable until approved</span>{% else %}<span class="badge b-grey">Locked</span>{% endif %}</div>
+
+  <dl class="facts">
+    <div><dt>Employer</dt><dd>{{ job.employer if job else '—' }}</dd></div>
+    <div><dt>Role</dt><dd>{{ job.title if job else '—' }}</dd></div>
+    <div><dt>Destination URL</dt><dd>{{ m.ext(job.apply_url if job else None) }}</dd></div>
+  </dl>
+
+  <h3>Resume</h3>
+  {% if resume %}
+    <p><strong>{{ resume.label }}</strong> <span class="badge b-{{ resume.status }}">{{ resume.status }}</span> <span class="muted small">version #{{ resume.id }}</span></p>
+    <div class="actions">
+      <a class="btn btn-sm" href="/studio/{{ resume.id }}/download.pdf"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#download"></use></svg> Download PDF</a>
+      <a class="btn btn-sm" href="/studio/{{ resume.id }}/download.docx"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#download"></use></svg> Download DOCX</a>
+      <a class="btn btn-sm btn-ghost" href="/studio?v={{ resume.id }}">Review in Resume Studio</a>
+    </div>
+  {% else %}
+    <p class="alert alert-error">No resume attached.</p>
+  {% endif %}
+
+  <h3 class="mt">Cover letter</h3>
+  {% if cover %}
+    <p class="small muted">Version {{ cover.version }} · {{ cover.method }} · {{ m.dt(cover.created_at) }} <button type="button" class="btn btn-sm" data-copy-target="#cover-text" hidden>Copy letter</button></p>
+    <pre class="letter" id="cover-text">{{ cover.body }}</pre>
+  {% else %}
+    <p class="muted">No cover letter.</p>
+  {% endif %}
+  {% if editable %}
+    <details class="disclosure">
+      <summary>Edit cover letter</summary>
+      <div class="disclosure-body">
+        <form method="post" action="/applications/{{ a.id }}/cover-letter">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <div class="field">
+            <label for="cl-body">Cover letter text</label>
+            <textarea id="cl-body" name="body" class="tall" maxlength="8000" required>{{ cover.body if cover else '' }}</textarea>
+            <span class="hint">Saving creates a new version. Only state facts you can back up.</span>
+          </div>
+          <button type="submit" class="btn btn-sm btn-primary">Save cover letter</button>
+        </form>
+      </div>
+    </details>
+  {% endif %}
+
+  <h3 class="mt">Screening answers</h3>
+  {% if answers %}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Question</th><th scope="col">Answer</th><th scope="col">Source</th><th scope="col"><span class="visually-hidden">Copy</span></th></tr></thead>
+      <tbody>
+      {% for x in answers %}
+        <tr><td>{{ x.question }}</td><td>{{ x.answer }}</td><td class="small muted">{{ x.source or '—' }}</td><td><button type="button" class="btn btn-sm" data-copy="{{ x.answer }}" hidden>Copy</button></td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <p class="muted">No screening answers prepared.</p>
+  {% endif %}
+  {% if editable %}
+    <details class="disclosure mt">
+      <summary>Edit answers</summary>
+      <div class="disclosure-body">
+        <form method="post" action="/applications/{{ a.id }}/answers">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          {% for x in answers + [{'question': '', 'answer': ''}, {'question': '', 'answer': ''}] %}
+            <div class="answer-row">
+              <div class="field mb0">
+                <label for="q-{{ loop.index }}">Question {{ loop.index }}</label>
+                <input type="text" id="q-{{ loop.index }}" name="question" value="{{ x.question }}" maxlength="300">
+              </div>
+              <div class="field mb0">
+                <label for="a-{{ loop.index }}">Answer {{ loop.index }}</label>
+                <input type="text" id="a-{{ loop.index }}" name="answer" value="{{ x.answer }}" maxlength="2000">
+              </div>
+            </div>
+          {% endfor %}
+          <p class="hint small muted">Rows with an empty question or answer are removed. Saving requires a fresh review before approval.</p>
+          <button type="submit" class="btn btn-sm btn-primary">Save answers</button>
+        </form>
+      </div>
+    </details>
+  {% endif %}
+
+  <h3 class="mt">Missing information</h3>
+  {% if missing %}
+    <ul>
+      {% for x in missing %}
+        <li>{% if x.blocking %}<span class="badge b-red">Blocking</span>{% else %}<span class="badge b-amber">Check</span>{% endif %} <strong>{{ x.item }}</strong> — {{ x.why }}</li>
+      {% endfor %}
+    </ul>
+    <p class="small"><a href="/settings#candidate">Update candidate facts in Settings</a></p>
+  {% else %}
+    <p class="muted">Nothing missing.</p>
+  {% endif %}
+</section>
+
+{# ---------------------------------------------------------------- approval #}
+{% if st == 'awaiting_approval' %}
+<section class="card trust-panel" aria-labelledby="approve-h">
+  <div class="trust-head">
+    <span class="trust-icon" aria-hidden="true"><svg><use href="/static/icons.svg#shield-check"></use></svg></span>
+    <div><h2 id="approve-h">Approve this application</h2><p class="small muted mb0">Your explicit approval is required, and it is bound to exactly what you see above.</p></div>
+  </div>
+  {% if gate %}
+    <div class="alert alert-error" role="alert">
+      <strong>Approval is blocked:</strong>
+      <ul>{% for g in gate %}<li>{{ g }}</li>{% endfor %}</ul>
+    </div>
+    {% if job %}
+    <form method="post" action="/jobs/{{ job.id }}/verify" class="inline" data-overlay="verify">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="back" value="/applications/{{ a.id }}">
+      <button type="submit" class="btn btn-sm">Re-check listing now</button>
+    </form>
+    {% endif %}
+    <p class="mt"><button type="button" class="btn btn-primary" disabled>Approve this application</button></p>
+  {% else %}
+    <form method="post" action="/applications/{{ a.id }}/approve">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
+      <label class="check trust-confirm"><input type="checkbox" name="confirm" value="yes" required> I reviewed the employer, role, destination URL, resume, cover letter and answers above and approve this specific application</label>
+      <p class="small muted">Review fingerprint <span class="fp">{{ (fingerprint or '')[:12] }}</span> — if anything changes after you approve, the approval becomes invalid.</p>
+      <button type="submit" class="btn btn-primary btn-lg btn-cta" data-loading-text="Recording approval…"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg> Approve this application</button>
+    </form>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if st == 'ready_to_apply' %}
+<section class="card trust-panel" aria-labelledby="ready-h">
+  <h2 id="ready-h">Approved — ready to apply</h2>
+  {% if approval %}<p>Approval expires <strong>{{ m.dt(approval.expires_at) }}</strong> (UTC). Fingerprint <span class="fp">{{ approval.fingerprint[:12] }}</span>.</p>{% endif %}
+  <div class="actions">
+    <form method="post" action="/applications/{{ a.id }}/start" class="inline" data-overlay="start">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="btn btn-primary btn-lg btn-cta" data-loading-text="Starting…"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#send"></use></svg> Start application (opens checklist)</button>
+    </form>
+    <form method="post" action="/applications/{{ a.id }}/revoke" class="inline" data-confirm="Revoke this approval? You will need to review and approve again.">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="btn btn-danger">Revoke approval</button>
+    </form>
+  </div>
+</section>
+{% endif %}
+
+{% if st in ['application_started', 'submission_uncertain'] %}
+<section class="card" aria-labelledby="submit-h">
+  <h2 id="submit-h">Submit on the employer’s site</h2>
+  {% if st == 'submission_uncertain' %}<div class="alert alert-warn">The outcome is uncertain. Check your email or the employer portal, then record the final outcome. Do not submit twice.</div>{% endif %}
+  {% if dest and dest.startswith('https://') %}
+    <p><a class="btn btn-primary btn-lg" href="{{ dest }}" target="_blank" rel="noopener noreferrer">Open official application page ↗</a></p>
+  {% endif %}
+  <ol class="checklist">
+    <li>Upload the resume PDF{% if resume %} (<a href="/studio/{{ resume.id }}/download.pdf">download it here</a>){% endif %}.</li>
+    <li>Paste the cover letter{% if cover %} <button type="button" class="btn btn-sm" data-copy-target="#cover-text" hidden>Copy letter</button>{% endif %}.</li>
+    <li>Copy each screening answer from the table above (use the Copy buttons).</li>
+    <li>Submit, then save the confirmation number, email text or a screenshot.</li>
+  </ol>
+
+  <h3 class="mt">Record the outcome</h3>
+  <p class="small">Submitted requires evidence (reference number, confirmation text, or screenshot).</p>
+  <form method="post" action="/applications/{{ a.id }}/outcome" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <fieldset><legend>What happened?</legend>
+      <div class="radio-cards">
+        <label class="check"><input type="radio" name="outcome" value="submitted" required> Submitted successfully</label>
+        <label class="check"><input type="radio" name="outcome" value="failed"> It failed</label>
+        <label class="check"><input type="radio" name="outcome" value="uncertain"> Not sure</label>
+      </div>
+    </fieldset>
+    <div class="form-grid">
+      <div class="field">
+        <label for="ref">Reference / confirmation number</label>
+        <input type="text" id="ref" name="reference_number" maxlength="200">
+      </div>
+      <div class="field">
+        <label for="shot">Screenshot or PDF of confirmation <span class="hint">(PNG, JPEG or PDF, max 5 MB)</span></label>
+        <input type="file" id="shot" name="screenshot" accept=".png,.jpg,.jpeg,.pdf">
+      </div>
+    </div>
+    <div class="field">
+      <label for="conf">Confirmation text <span class="hint">(paste the on-screen message or email)</span></label>
+      <textarea id="conf" name="confirmation_text" maxlength="4000"></textarea>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="stage">If it failed: when?</label>
+        <select id="stage" name="failure_stage">
+          <option value="">—</option>
+          <option value="before_submit">Before I pressed submit</option>
+          <option value="after_submit_unknown">After pressing submit (result unknown)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="reason">Reason / notes</label>
+        <input type="text" id="reason" name="reason" maxlength="500">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Record outcome</button>
+  </form>
+</section>
+{% endif %}
+
+{% if st == 'submission_failed' %}
+<section class="card" aria-labelledby="fail-h">
+  <h2 id="fail-h">Submission failed</h2>
+  <p>If it failed before you pressed submit, you can retry. A fresh review and approval is required.</p>
+  <form method="post" action="/applications/{{ a.id }}/retry">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="btn btn-primary">Retry (requires new approval)</button>
+  </form>
+</section>
+{% endif %}
+
+{# ---------------------------------------------------------------- after submission #}
+{% if evidence or uploads %}
+<section class="card" aria-labelledby="ev-h">
+  <h2 id="ev-h">Submission evidence</h2>
+  {% if evidence %}
+    <dl class="facts">
+      {% if evidence.type == 'user_declared_external' %}
+        <div><dt>Type</dt><dd>Declared by you (applied outside JobAgent)</dd></div>
+        <div><dt>Applied on</dt><dd>{{ evidence.applied_on or '—' }}</dd></div>
+        {% if evidence.note %}<div><dt>Note</dt><dd>{{ evidence.note }}</dd></div>{% endif %}
+      {% else %}
+        <div><dt>Reference number</dt><dd>{{ evidence.reference_number or '—' }}</dd></div>
+        <div><dt>Screenshot</dt><dd>{% if evidence.file_id %}<a href="/files/{{ evidence.file_id }}">Download</a>{% else %}—{% endif %}</dd></div>
+      {% endif %}
+      <div><dt>Recorded</dt><dd>{{ m.dt(evidence.recorded_at) }} by {{ evidence.recorded_by or '—' }}</dd></div>
+      <div><dt>Submitted at</dt><dd>{{ m.dt(a.submitted_at) }}</dd></div>
+    </dl>
+    {% if evidence.confirmation_text %}<h3>Confirmation text</h3><pre>{{ evidence.confirmation_text }}</pre>{% endif %}
+  {% endif %}
+  {% if uploads %}
+    <h3>Uploaded files</h3>
+    <ul>{% for u in uploads %}<li><a href="/files/{{ u.file_id or u.id }}">{{ u.original_name }}</a> <span class="muted small">{{ m.dt(u.created_at) }}</span></li>{% endfor %}</ul>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if st in ['submitted', 'interview', 'assessment', 'offer', 'rejected', 'withdrawn'] %}
+<section class="card" aria-labelledby="prog-h">
+  <h2 id="prog-h">Progress</h2>
+  <form method="post" action="/applications/{{ a.id }}/progress">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="row_version" value="{{ a.row_version }}">
+    <div class="form-grid">
+      <div class="field">
+        <label for="to_status">Move to status</label>
+        <select id="to_status" name="to_status">
+          <option value="">Keep “{{ labels.get(st) }}”</option>
+          {% for s in next_statuses %}<option value="{{ s }}">{{ labels.get(s, s) }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="interview_at">Interview date & time</label>
+        {% set iv = a.interview_at or '' %}
+        <input type="datetime-local" id="interview_at" name="interview_at" value="{{ iv[:16] if iv|length >= 16 else ((iv[:10] ~ 'T00:00') if iv else '') }}">
+      </div>
+      <div class="field">
+        <label for="follow_up_at">Follow up on</label>
+        <input type="date" id="follow_up_at" name="follow_up_at" value="{{ (a.follow_up_at or '')[:10] }}">
+      </div>
+    </div>
+    <div class="field">
+      <label for="notes">Notes</label>
+      <textarea id="notes" name="notes" maxlength="5000">{{ a.notes or '' }}</textarea>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="rejection_reason">Rejection reason</label>
+        <input type="text" id="rejection_reason" name="rejection_reason" maxlength="1000" value="{{ a.rejection_reason or '' }}">
+      </div>
+      <div class="field">
+        <label for="offer_details">Offer details</label>
+        <input type="text" id="offer_details" name="offer_details" maxlength="2000" value="{{ a.offer_details or '' }}">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Save progress</button>
+  </form>
+</section>
+{% endif %}
+
+{% if a.notes and st not in ['submitted', 'interview', 'assessment', 'offer', 'rejected', 'withdrawn'] %}
+<section class="card"><h2>Notes</h2><p>{{ a.notes }}</p></section>
+{% endif %}
+
+<div class="grid grid-2 mt">
+  <section class="card" aria-labelledby="tl-h">
+    <h2 id="tl-h">Timeline</h2>
+    {% if events %}
+      <ol class="timeline">
+        {% for e in events %}
+          <li>
+            <div><strong>{{ e.action|replace('_', ' ') }}</strong>{% if e.from_status or e.to_status %} · {{ labels.get(e.from_status, e.from_status or '—') }} → {{ labels.get(e.to_status, e.to_status or '—') }}{% endif %}</div>
+            <div class="small muted">{{ m.dt(e.at) }} · {{ e.actor }}</div>
+            {% if e.detail and e.detail.reason %}<div class="small">{{ e.detail.reason }}</div>{% endif %}
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}<p class="muted">No events yet.</p>{% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="mgmt-h">
+    <h2 id="mgmt-h">Manage</h2>
+    {% if st not in ['withdrawn', 'rejected', 'application_started', 'submission_uncertain'] %}
+      <form method="post" action="/applications/{{ a.id }}/withdraw" data-confirm="Withdraw this application? This is recorded in the audit log.">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="btn btn-danger">Withdraw application</button>
+      </form>
+      <hr>
+    {% endif %}
+    <h3>Manual correction</h3>
+    <p class="small muted">Fix a wrong status outside the normal flow. Audited. Submission cannot be recorded this way.</p>
+    <form method="post" action="/applications/{{ a.id }}/correct" data-confirm="Apply this manual status correction?">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="field">
+        <label for="corr-status">Correct status to</label>
+        <select id="corr-status" name="to_status" required>
+          {% for k, v in labels.items() if k not in ['submitted', 'application_started', 'ready_to_apply', 'discovered'] %}
+            <option value="{{ k }}"{% if k == st %} selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="corr-reason">Reason <span class="hint">(required, 5+ characters)</span></label>
+        <input type="text" id="corr-reason" name="reason" minlength="5" maxlength="500" required>
+      </div>
+      <button type="submit" class="btn btn-sm">Apply correction</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

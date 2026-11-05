@@ -1,0 +1,16 @@
+{% extends "_auth.html" %}
+{% block title %}Awaiting approval{% endblock %}
+{% block card %}
+  <div class="status-hero">
+    <div class="status-orb" aria-hidden="true"><svg><use href="/static/icons.svg#hourglass"></use></svg></div>
+    <h1>Thanks, your request was received</h1>
+  </div>
+  <div class="alert alert-ok" role="status" data-signup="received">Your account is awaiting approval by the administrator.</div>
+  <ol class="steps-mini" aria-label="What happens next">
+    <li class="done"><span class="n" aria-hidden="true">&#10003;</span> Request submitted</li>
+    <li class="now"><span class="n" aria-hidden="true">2</span> An admin reviews your account</li>
+    <li><span class="n" aria-hidden="true">3</span> You get an email and can sign in</li>
+  </ol>
+  <p>You will receive an email at the address you entered once a decision has been made. Until then you cannot sign in.</p>
+  <p class="mb0"><a class="btn btn-block" href="/login"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#arrow-left"></use></svg> Back to sign in</a></p>
+{% endblock %}

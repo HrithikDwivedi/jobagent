@@ -1,0 +1,56 @@
+{% extends "_auth.html" %}
+{% block title %}First-run setup{% endblock %}
+{% block card %}
+    <h1>Create the administrator account</h1>
+    <p class="sub">This one-time setup creates the administrator account. Other people can then request accounts, which you approve. Setup is disabled once an account exists.</p>
+    {% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+    <form method="post" action="/setup">
+      <input type="hidden" name="pre_csrf" value="{{ pre_csrf }}">
+      {% if needs_token %}
+      <div class="field">
+        <label for="setup_token">Setup token <span class="hint">(value of JOBAGENT_SETUP_TOKEN)</span></label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>
+          <input type="password" id="setup_token" name="setup_token" autocomplete="off" required>
+        </div>
+      </div>
+      {% endif %}
+      <div class="field">
+        <label for="full_name">Full name <span class="hint">(optional)</span></label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#user"></use></svg>
+          <input type="text" id="full_name" name="full_name" autocomplete="name" maxlength="120">
+        </div>
+      </div>
+      <div class="field">
+        <label for="email">Email <span class="hint">(optional; receives sign-up requests if JOBAGENT_ADMIN_EMAIL is not set)</span></label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#mail"></use></svg>
+          <input type="email" id="email" name="email" autocomplete="email" maxlength="254">
+        </div>
+      </div>
+      <div class="field">
+        <label for="username">Username</label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>
+          <input type="text" id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        </div>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#lock"></use></svg>
+          <input type="password" id="password" name="password" autocomplete="new-password" minlength="12" required aria-describedby="pw-rules" data-strength>
+        </div>
+        <span class="hint" id="pw-rules">At least 12 characters, with upper- and lower-case letters and a digit.</span>
+      </div>
+      <div class="field">
+        <label for="password2">Repeat password</label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#lock"></use></svg>
+          <input type="password" id="password2" name="password2" autocomplete="new-password" minlength="12" required data-match="#password">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg" data-loading-text="Creating account…">Create account</button>
+    </form>
+{% endblock %}
