@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<!-- SYNTHETIC fixture mimicking the jobs.lever.co/<site>/<id>/apply markup (application-question list, cards[...]
+     custom questions, urls[...] links, comments box, voluntary surveysResponses[...] EEO survey). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Acme - Software Engineer</title>
+{{CAPTCHA_HEAD}}
+<style>body{font-family:sans-serif;max-width:760px;margin:20px auto} .invisible-resume-upload{position:absolute;opacity:0;width:1px;height:1px} li{list-style:none;margin:10px 0}</style>
+</head>
+<body>
+<div class="posting-headline"><h2>Software Engineer</h2><div class="posting-categories">London, United Kingdom</div></div>
+<div class="section-wrapper page-full-width">
+<form id="application-form" class="application-form" method="POST" action="{{ACTION}}" enctype="multipart/form-data">
+  <div class="section application-form page-centered">
+    <h4>Submit your application</h4>
+    <ul>
+      <li class="application-question resume">
+        <label for="resume-upload-input"><div class="application-label">Resume/CV<span class="required">&#x2731;</span></div></label>
+        <div class="application-field"><a class="postings-btn template-btn-utility visible-resume-upload">Attach resume/CV</a>
+          <input type="file" name="resume" id="resume-upload-input" class="application-file-input invisible-resume-upload" required></div>
+      </li>
+      <li class="application-question"><label><div class="application-label">Full name<span class="required">&#x2731;</span></div>
+        <div class="application-field"><input type="text" name="name" required></div></label></li>
+      <li class="application-question"><label><div class="application-label">Pronouns</div></label>
+        <div class="application-field"><ul>
+          <li><label><input type="checkbox" name="pronouns" value="He/him">He/him</label></li>
+          <li><label><input type="checkbox" name="pronouns" value="She/her">She/her</label></li>
+          <li><label><input type="checkbox" name="pronouns" value="They/them">They/them</label></li>
+          <li><label><input type="checkbox" name="pronouns" value="Use name only">Use name only</label></li>
+        </ul></div></li>
+      <li class="application-question"><label><div class="application-label">Email<span class="required">&#x2731;</span></div>
+        <div class="application-field"><input type="email" name="email" required></div></label></li>
+      <li class="application-question"><label><div class="application-label">Phone<span class="required">&#x2731;</span></div>
+        <div class="application-field"><input type="text" name="phone" required></div></label></li>
+      <li class="application-question"><label><div class="application-label">Current location<span class="required">&#x2731;</span></div>
+        <div class="application-field"><input type="text" name="location" id="location-input" required></div></label></li>
+      <li class="application-question"><label><div class="application-label">Current company</div>
+        <div class="application-field"><input type="text" name="org"></div></label></li>
+    </ul>
+  </div>
+  <div class="section application-form page-centered">
+    <h4>Links</h4>
+    <ul>
+      <li class="application-question"><label><div class="application-label">LinkedIn URL</div>
+        <div class="application-field"><input type="text" name="urls[LinkedIn]"></div></label></li>
+      <li class="application-question"><label><div class="application-label">GitHub URL</div>
+        <div class="application-field"><input type="text" name="urls[GitHub]"></div></label></li>
+    </ul>
+  </div>
+  <div class="section application-form page-centered application-additional">
+    <ul>
+      <li class="application-question custom-question">
+        <div class="application-label full-width"><div class="text">Are you legally authorized to work in the United Kingdom?<span class="required">&#x2731;</span></div></div>
+        <div class="application-field full-width"><ul data-qa="multiple-choice">
+          <li><label><input type="radio" name="cards[c1][field0]" value="Yes" required><span class="application-answer-alternative">Yes</span></label></li>
+          <li><label><input type="radio" name="cards[c1][field0]" value="No" required><span class="application-answer-alternative">No</span></label></li>
+        </ul></div>
+      </li>
+      <li class="application-question custom-question">
+        <div class="application-label full-width"><div class="text">Will you now or in the future require sponsorship for employment visa status?<span class="required">&#x2731;</span></div></div>
+        <div class="application-field full-width"><ul data-qa="multiple-choice">
+          <li><label><input type="radio" name="cards[c1][field1]" value="Yes" required><span class="application-answer-alternative">Yes</span></label></li>
+          <li><label><input type="radio" name="cards[c1][field1]" value="No" required><span class="application-answer-alternative">No</span></label></li>
+        </ul></div>
+      </li>
+      <li class="application-question custom-question">
+        <div class="application-label full-width"><div class="text">How did you hear about this job?<span class="required">&#x2731;</span></div></div>
+        <div class="application-field full-width"><select name="cards[c2][field0]" required>
+          <option value="">Select...</option><option>LinkedIn</option><option>Company website</option><option>Job board</option><option>Referral</option><option>Other</option>
+        </select></div>
+      </li>
+      {{EXTRA}}
+    </ul>
+  </div>
+  <div class="section application-form page-centered">
+    <h4>Additional information</h4>
+    <ul><li class="application-question"><label><div class="application-label">Additional information</div>
+      <div class="application-field"><textarea name="comments" id="additional-information" placeholder="Add a cover letter or anything else you want to share."></textarea></div></label></li></ul>
+  </div>
+  <div class="section application-form page-centered eeo-section">
+    <h4>U.K. Equal Opportunity Survey (voluntary)</h4>
+    <ul>
+      <li class="application-question"><div class="application-label"><div class="text">Gender</div></div>
+        <div class="application-field"><ul>
+          <li><label><input type="radio" name="surveysResponses[s1][responses][field0]" value="Woman">Woman</label></li>
+          <li><label><input type="radio" name="surveysResponses[s1][responses][field0]" value="Man">Man</label></li>
+          <li><label><input type="radio" name="surveysResponses[s1][responses][field0]" value="Non-binary">Non-binary</label></li>
+          <li><label><input type="radio" name="surveysResponses[s1][responses][field0]" value="Prefer not to disclose">Prefer not to disclose</label></li>
+        </ul></div></li>
+      <li class="application-question"><div class="application-label"><div class="text">Race / ethnicity</div></div>
+        <div class="application-field"><ul>
+          <li><label><input type="radio" name="surveysResponses[s1][responses][field1]" value="Asian">Asian</label></li>
+          <li><label><input type="radio" name="surveysResponses[s1][responses][field1]" value="White">White</label></li>
+          <li><label><input type="radio" name="surveysResponses[s1][responses][field1]" value="Prefer not to disclose">Prefer not to disclose</label></li>
+        </ul></div></li>
+    </ul>
+  </div>
+  {{CAPTCHA_BODY}}
+  <div class="application-submit"><button type="submit" class="postings-btn template-btn-submit" id="btn-submit">Submit application</button></div>
+</form>
+</div>
+</body>
+</html>

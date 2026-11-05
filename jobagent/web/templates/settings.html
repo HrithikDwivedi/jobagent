@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+{% set cand = s.candidate %}
+<div class="page-head">
+  <div>
+    <h1>Settings</h1>
+    <p>Each section saves separately. All values are validated on the server and every change is audited.{% if is_admin %} Sources, AI and Schedule apply to the whole installation; the other sections are your own.{% else %} These settings are private to your account.{% endif %}</p>
+  </div>
+  <span class="badge badge-outline">Database: {{ db_kind }}</span>
+</div>
+
+{% if config_problems %}
+  <div class="alert alert-warn" role="alert"><strong>Configuration problems</strong>
+    <ul>{% for p in config_problems %}<li>{{ p }}</li>{% endfor %}</ul>
+  </div>
+{% endif %}
+
+<nav class="settings-nav" aria-label="Settings sections">
+  {% if is_admin %}
+    {% set sections = [('candidate', 'Candidate'), ('search', 'Search'), ('weights', 'Weights'), ('limits', 'Limits'), ('sources', 'Sources'), ('ai', 'AI'), ('auto_apply', 'Auto-apply'), ('resume_style', 'Resume style'), ('schedule', 'Schedule'), ('password', 'Password'), ('data', 'Data')] %}
+  {% else %}
+    {% set sections = [('candidate', 'Candidate'), ('search', 'Search'), ('weights', 'Weights'), ('limits', 'Limits'), ('auto_apply', 'Auto-apply'), ('resume_style', 'Resume style'), ('notifications', 'Notifications'), ('password', 'Password'), ('data', 'Data')] %}
+  {% endif %}
+  {% for a, l in sections %}
+    <a class="chip" href="#{{ a }}">{{ l }}</a>
+  {% endfor %}
+</nav>
+
+<div class="stack">
+{# ------------------------------------------------------------ candidate #}
+<section class="card settings-section" id="candidate" aria-labelledby="h-candidate">
+  <h2 id="h-candidate">Candidate facts</h2>
+  <p class="small muted">Only facts you confirm here are used in screening answers. Nothing is guessed.</p>
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="section" value="candidate">
+    <div class="form-grid">
+      {% for k, l, t in [('full_name', 'Full name', 'text'), ('email', 'Email', 'email'), ('phone', 'Phone', 'tel'), ('linkedin_url', 'LinkedIn URL', 'url'), ('github_url', 'GitHub URL (optional)', 'url'), ('portfolio_url', 'Portfolio / website (optional)', 'url'), ('current_location', 'Current location', 'text'), ('nationality', 'Nationality', 'text'), ('notice_period', 'Notice period / earliest start', 'text'), ('salary_expectation', 'Salary expectation', 'text')] %}
+        <div class="field">
+          <label for="c-{{ k }}">{{ l }}</label>
+          <input type="{{ t }}" id="c-{{ k }}" name="{{ k }}" value="{{ cand.get(k) or '' }}" maxlength="200">
+        </div>
+      {% endfor %}
+    </div>
+    <label class="check"><input type="checkbox" name="requires_sponsorship_outside" value="1"{% if cand.requires_sponsorship_outside %} checked{% endif %}> I require visa sponsorship outside the countries listed below</label>
+    <label class="check"><input type="checkbox" name="willing_to_relocate" value="1"{% if cand.willing_to_relocate %} checked{% endif %}> I am willing to relocate</label>
+    <div class="field mt">
+      <label for="c-wa">Work authorisation <span class="hint">One per line as COUNTRY: status (citizen, permanent_resident or work_permit), e.g. “IN: citizen”</span></label>
+      <textarea id="c-wa" name="work_authorization">{% for c, st in (cand.work_authorization or {}).items() %}{{ c }}: {{ st }}
+{% endfor %}</textarea>
+    </div>
+    <fieldset><legend>Languages</legend>
+      {% for l in (cand.languages or []) + [{'language': '', 'level': 'unverified'}] %}
+        {% set i = loop.index0 %}
+        <div class="lang-row">
+          <div class="field mb0">
+            <label for="ln-{{ i }}">Language {{ loop.index }}</label>
+            <input type="text" id="ln-{{ i }}" name="lang_name" value="{{ l.language }}" maxlength="30">
+          </div>
+          <div class="field mb0">
+            <label for="ll-{{ i }}">Level</label>
+            <select id="ll-{{ i }}" name="lang_level_{{ i }}">
+              {% for lv in ['unverified', 'native', 'C2', 'C1', 'B2', 'B1', 'A2', 'A1'] %}<option value="{{ lv }}"{% if l.level == lv %} selected{% endif %}>{{ 'Unverified' if lv == 'unverified' else ('Native' if lv == 'native' else lv) }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+      {% endfor %}
+      <p class="small muted mb0">Leave a name empty to remove it. “Unverified” levels are never used in answers.</p>
+    </fieldset>
+    <button type="submit" class="btn btn-primary">Save candidate facts</button>
+  </form>
+</section>
+
+{# ------------------------------------------------------------ search #}
+<section class="card settings-section" id="search" aria-labelledby="h-search">
+  <h2 id="h-search">Search preferences</h2>
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="section" value="search">
+    <div class="grid grid-3">
+      {% for t in ['tier1', 'tier2', 'tier3'] %}
+        <div class="field">
+          <label for="s-{{ t }}">Tier {{ loop.index }} countries <span class="hint">ISO codes, one per line or comma-separated</span></label>
+          <textarea id="s-{{ t }}" name="{{ t }}">{{ (s.target_countries.get(t) or [])|join('\n') }}</textarea>
+        </div>
+      {% endfor %}
+    </div>
+    <details class="disclosure">
+      <summary>Country code legend</summary>
+      <div class="disclosure-body"><ul class="legend-list">{% for c, n in countries|dictsort(by='value') %}<li><code>{{ c }}</code> {{ n }}</li>{% endfor %}</ul></div>
+    </details>
+    <div class="grid grid-2">
+      <div class="field">
+        <label for="s-roles">Preferred roles <span class="hint">one per line</span></label>
+        <textarea id="s-roles" name="preferred_roles">{{ s.preferred_roles|join('\n') }}</textarea>
+      </div>
+      <div class="field">
+        <label for="s-excl">Excluded title terms <span class="hint">one per line</span></label>
+        <textarea id="s-excl" name="excluded_title_terms">{{ s.excluded_title_terms|join('\n') }}</textarea>
+      </div>
+    </div>
+    <label class="check"><input type="checkbox" name="include_india_remote" value="1"{% if s.include_india_remote %} checked{% endif %}> Include India-based and remote-from-India roles</label>
+    <fieldset class="mt"><legend>Work arrangements</legend>
+      {% for k, l in [('onsite', 'On-site'), ('hybrid', 'Hybrid'), ('remote', 'Remote')] %}
+        <label class="check"><input type="checkbox" name="work_arrangements" value="{{ k }}"{% if k in s.work_arrangements %} checked{% endif %}> {{ l }}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="form-grid">
+      <div class="field">
+        <label for="s-minsal">Minimum yearly salary</label>
+        <input type="number" id="s-minsal" name="min_salary" min="0" max="1000000" step="1000" value="{{ s.min_salary }}">
+      </div>
+      <div class="field">
+        <label for="s-cur">Currency</label>
+        <select id="s-cur" name="currency">
+          {% for c in ['EUR', 'GBP', 'CHF', 'SEK', 'DKK', 'PLN', 'CZK', 'USD', 'INR'] %}<option value="{{ c }}"{% if s.currency == c %} selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="s-pol">Sponsorship policy</label>
+        <select id="s-pol" name="sponsorship_policy">
+          {% for k, l in [('exclude_not_supported', 'Skip jobs that say no sponsorship'), ('require_confirmed_or_likely', 'Require confirmed or likely sponsorship'), ('any', 'Show everything')] %}<option value="{{ k }}"{% if s.sponsorship_policy == k %} selected{% endif %}>{{ l }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="s-minscore">Minimum match score</label>
+        <input type="number" id="s-minscore" name="min_match_score" min="0" max="100" value="{{ s.min_match_score }}">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Save search preferences</button>
+  </form>
+</section>
+
+{# ------------------------------------------------------------ weights #}
+<section class="card settings-section" id="weights" aria-labelledby="h-weights">
+  <h2 id="h-weights">Scoring weights</h2>
+  <p class="small muted">Relative importance of each match component (0–100). The score is the weighted average.</p>
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="section" value="weights">
+    <div class="form-grid">
+      {% for k, v in s.weights.items() %}
+        <div class="field">
+          <label for="w-{{ k }}">{{ m.COMPONENTS.get(k, k) }}</label>
+          <input type="number" id="w-{{ k }}" name="{{ k }}" min="0" max="100" step="any" value="{{ v }}">
+        </div>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary">Save weights</button>
+  </form>
+</section>
+
+{# ------------------------------------------------------------ limits #}
+<section class="card settings-section" id="limits" aria-labelledby="h-limits">
+  <h2 id="h-limits">Limits & safety</h2>
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="section" value="limits">
+    <div class="form-grid">
+      {% for k, l, lo, hi in [('max_applications_per_run', 'Drafts prepared per run', 0, 50), ('max_applications_per_day', 'Applications per day', 0, 100), ('max_applications_per_week', 'Applications per week', 0, 300), ('approval_ttl_hours', 'Approval valid for (hours)', 1, 336), ('verification_max_age_hours', 'Listing must be verified within (hours)', 1, 336), ('uncertain_after_hours', 'Mark started as uncertain after (hours)', 1, 336), ('data_retention_days', 'Data retention (days)', 30, 3650)] %}
+        <div class="field">
+          <label for="l-{{ k }}">{{ l }}</label>
+          <input type="number" id="l-{{ k }}" name="{{ k }}" min="{{ lo }}" max="{{ hi }}" value="{{ s.get(k) }}">
+        </div>
+      {% endfor %}
+    </div>
+    <p class="small muted">Operating mode is always “review and approval”: every submission needs your job-specific approval.</p>
+    <button type="submit" class="btn btn-primary">Save limits</button>
+  </form>
+</section>
+
+{% if is_admin %}
+{# ------------------------------------------------------------ sources (global, admin only) #}
+<section class="card settings-section" id="sources" aria-labelledby="h-sources">
+  <h2 id="h-sources">Job sources</h2>
+  <p class="small muted">Only official, public job-board APIs are used. Board identifiers are the company slugs in the board URL.</p>
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="section" value="sources">
+    {% set src = s.sources %}
+    <fieldset><legend>Enabled sources</legend>
+      {% for k, l in [('greenhouse', 'Greenhouse'), ('lever', 'Lever'), ('ashby', 'Ashby'), ('arbeitnow', 'Arbeitnow'), ('uk_sponsor_register', 'UK Register of Licensed Sponsors')] %}
+        <label class="check"><input type="checkbox" name="{{ k }}" value="1"{% if (src.get(k) or {}).get('enabled') %} checked{% endif %}> {{ l }}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="grid grid-3">
+      <div class="field">
+        <label for="src-gh">Greenhouse boards</label>
+        <textarea id="src-gh" name="greenhouse_boards" class="tall">{{ ((src.greenhouse or {}).boards or [])|join('\n') }}</textarea>
+      </div>
+      <div class="field">
+        <label for="src-lv">Lever sites</label>
+        <textarea id="src-lv" name="lever_sites" class="tall">{{ ((src.lever or {}).sites or [])|join('\n') }}</textarea>
+      </div>
+      <div class="field">
+        <label for="src-ab">Ashby boards</label>
+        <textarea id="src-ab" name="ashby_boards" class="tall">{{ ((src.ashby or {}).boards or [])|join('\n') }}</textarea>
+      </div>
+    </div>
+    <div class="field">
+      <label for="src-an">Arbeitnow pages per run</label>
+      <input type="number" id="src-an" name="arbeitnow_pages" min="1" max="20" value="{{ (src.arbeitnow or {}).max_pages or 3 }}">
+    </div>
+    <button type="submit" class="btn btn-primary">Save sources</button>
+  </form>
+</section>
+
+{# ------------------------------------------------------------ ai #}
+<section class="card settings-section" id="ai" aria-labelledby="h-ai">
+  <h2 id="h-ai">AI assistance</h2>
+  <p>Provider: <strong>{{ ai_provider }}</strong> · API key {% if ai_key_set %}<span class="badge b-green">configured</span>{% else %}<span class="badge b-grey">not set</span>{% endif %} · Spend this month: <strong>${{ '%.4f'|format(ai_month) }}</strong></p>
+  <p class="small muted">Keys are set via environment variables and are never shown here. AI only extracts requirements and drafts letters; it cannot approve or submit anything.</p>
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="section" value="ai">
+    <label class="check"><input type="checkbox" name="enabled" value="1"{% if s.ai.enabled %} checked{% endif %}> Enable AI assistance</label>
+    <div class="form-grid mt">
+      <div class="field"><label for="ai-model">Model</label><input type="text" id="ai-model" name="model" value="{{ s.ai.model }}" maxlength="64" required></div>
+      <div class="field"><label for="ai-fb">Fallback model</label><input type="text" id="ai-fb" name="fallback_model" value="{{ s.ai.fallback_model }}" maxlength="64"></div>
+      <div class="field"><label for="ai-rb">Budget per run (USD)</label><input type="number" id="ai-rb" name="run_budget_usd" min="0" max="100" step="0.01" value="{{ s.ai.run_budget_usd }}"></div>
+      <div class="field"><label for="ai-mb">Monthly budget (USD)</label><input type="number" id="ai-mb" name="monthly_budget_usd" min="0" max="1000" step="0.01" value="{{ s.ai.monthly_budget_usd }}"></div>
+      <div class="field"><label for="ai-mj">Max jobs analysed per run</label><input type="number" id="ai-mj" name="max_jobs_analyzed_per_run" min="0" max="200" value="{{ s.ai.max_jobs_analyzed_per_run }}"></div>
+    </div>
+    <button type="submit" class="btn btn-primary">Save AI settings</button>
+  </form>
+</section>
+
+{% endif %}
+
+{# ------------------------------------------------------------ auto-apply #}
+{% set aa = s.auto_apply %}
+<section class="card settings-section" id="auto_apply" aria-labelledby="h-auto">
+  <h2 id="h-auto">Auto-apply</h2>
+  <p>Status:
+    {% if aa.enabled %}<span class="badge b-green">enabled</span> since {{ aa.acknowledged_at[:16] if aa.acknowledged_at else '—' }}
+    {% else %}<span class="badge b-grey">off</span>{% endif %}
+  </p>
+  <div class="alert alert-info" role="note">
+    <p><strong>How it works.</strong> After each agent run, jobs that pass <em>every</em> rule below are approved by this policy
+    (instead of your click) and an auto-apply worker opens the employer's own application form in a real browser, fills it
+    only with facts you confirmed, uploads the job-tailored one-page resume and cover letter, submits, and records
+    "Submitted" only after it sees the employer's confirmation page (screenshot saved as evidence).</p>
+    <p class="small">It never invents answers: an unknown required question, a CAPTCHA/bot check, or a site it doesn't
+    support sends the job back to you as "Awaiting approval". The worker needs a real browser, so it runs on your PC
+    (<code>python -m jobagent autoapply</code>) or on GitHub Actions — not inside Vercel. Start with
+    <code>python -m jobagent autoapply --dry-run --headed</code> to watch it fill a form without submitting.</p>
+  </div>
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="section" value="auto_apply">
+    <label class="check"><input type="checkbox" name="enabled" value="1"{% if aa.enabled %} checked{% endif %}> Enable auto-apply</label>
+    <label class="check"><input type="checkbox" name="acknowledge" value="yes"{% if aa.acknowledged_at %} checked{% endif %}>
+      I authorise JobAgent to submit applications on my behalf, without asking each time, to jobs that match these rules,
+      using only the facts in my Settings and resume. I can switch this off at any time.</label>
+    <div class="form-grid mt">
+      <div class="field"><label for="aa-mode">Mode</label>
+        <select id="aa-mode" name="mode">
+          <option value="fill_and_submit"{% if aa.mode == 'fill_and_submit' %} selected{% endif %}>Fill and submit</option>
+          <option value="fill_only"{% if aa.mode == 'fill_only' %} selected{% endif %}>Fill only (I click Submit)</option>
+        </select></div>
+      <div class="field"><label for="aa-min">Minimum match score</label><input type="number" id="aa-min" name="min_score" min="50" max="100" value="{{ aa.min_score }}"></div>
+      <div class="field"><label for="aa-run">Max per run</label><input type="number" id="aa-run" name="max_per_run" min="0" max="20" value="{{ aa.max_per_run }}"></div>
+      <div class="field"><label for="aa-day">Max per day</label><input type="number" id="aa-day" name="max_per_day" min="0" max="50" value="{{ aa.max_per_day }}"></div>
+      <div class="field"><label for="aa-c">Countries (blank = all targets)</label><textarea id="aa-c" name="countries" rows="2">{{ aa.countries|join(', ') }}</textarea></div>
+    </div>
+    <fieldset><legend>Allowed sponsorship evidence</legend><div class="row">
+      {% for v, l in [('confirmed','Confirmed'), ('likely','Likely'), ('not_needed','Not needed (India / remote)'), ('unknown','Unknown')] %}
+        <label class="check"><input type="checkbox" name="sponsorship" value="{{ v }}"{% if v in aa.sponsorship %} checked{% endif %}> {{ l }}</label>
+      {% endfor %}</div></fieldset>
+    <fieldset><legend>Application sites</legend><div class="row">
+      {% for v, l in [('greenhouse','Greenhouse'), ('lever','Lever'), ('ashby','Ashby')] %}
+        <label class="check"><input type="checkbox" name="ats" value="{{ v }}"{% if v in aa.ats %} checked{% endif %}> {{ l }}</label>
+      {% endfor %}</div></fieldset>
+    <label class="check"><input type="checkbox" name="headless" value="1"{% if aa.headless %} checked{% endif %}> Run the browser hidden (headless)</label>
+    <label class="check"><input type="checkbox" name="accept_privacy_notices" value="1"{% if aa.accept_privacy_notices %} checked{% endif %}>
+      Tick required privacy-policy / data-processing consent boxes for me (otherwise such forms are handed back to you)</label>
+    <div class="mt"><button type="submit" class="btn btn-primary">Save auto-apply</button></div>
+  </form>
+</section>
+
+{# ------------------------------------------------------------ resume style #}
+{% set rs = s.resume_style %}
+<section class="card settings-section" id="resume_style" aria-labelledby="h-rstyle">
+  <h2 id="h-rstyle">Resume style</h2>
+  <p class="small muted">Every application gets a one-page resume tailored to that job description, the country's conventions and the employer type. Facts are never added: a guard rejects any new number, skill or employer.</p>
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="section" value="resume_style">
+    <div class="form-grid">
+      <div class="field"><label for="rs-ct">Employer style</label>
+        <select id="rs-ct" name="company_type">
+          {% for v, l in [('auto','Auto-detect from the job'), ('big_tech','Big tech / MNC'), ('enterprise','Enterprise'), ('startup','Startup')] %}
+            <option value="{{ v }}"{% if rs.company_type == v %} selected{% endif %}>{{ l }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field"><label for="rs-sp">Spelling</label>
+        <select id="rs-sp" name="spelling">
+          {% for v, l in [('auto','By target country'), ('uk','British'), ('us','American')] %}
+            <option value="{{ v }}"{% if rs.spelling == v %} selected{% endif %}>{{ l }}</option>
+          {% endfor %}
+        </select></div>
+    </div>
+    <div class="field"><label for="rs-ats">ATS score target</label><input type="number" id="rs-ats" name="ats_target" min="60" max="100" value="{{ rs.ats_target or 95 }}"></div>
+    <label class="check"><input type="checkbox" name="one_page" value="1"{% if rs.one_page %} checked{% endif %}> Always fit on one page</label>
+    <label class="check"><input type="checkbox" name="ai_rewrite" value="1"{% if rs.ai_rewrite %} checked{% endif %}> Let AI polish the wording (fact-guarded){% if not is_admin %} <span class="hint">(AI is available to the administrator only; your resumes use the rule-based tailoring)</span>{% endif %}</label>
+    <label class="check"><input type="checkbox" name="tailor_per_job" value="1"{% if rs.tailor_per_job %} checked{% endif %}> Tailor a separate resume for every job</label>
+    <div class="mt"><button type="submit" class="btn btn-primary">Save resume style</button></div>
+  </form>
+</section>
+
+{% if is_admin %}
+{# ------------------------------------------------------------ schedule (global, admin only) #}
+<section class="card settings-section" id="schedule" aria-labelledby="h-schedule">
+  <h2 id="h-schedule">Schedule & notifications</h2>
+  {% if deployment == 'vercel' %}
+    <div class="alert alert-info">On Vercel, the schedule is defined by the Vercel Cron entry in <code>vercel.json</code>; these values are informational.</div>
+  {% else %}
+    <p class="small muted">Locally, register the scheduled task with <code>scripts/schedule_windows.ps1</code>. On Vercel the schedule is the Vercel Cron in <code>vercel.json</code>.</p>
+  {% endif %}
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="section" value="schedule">
+    <label class="check"><input type="checkbox" name="enabled" value="1"{% if s.schedule.enabled %} checked{% endif %}> Run the agent on a schedule</label>
+    <div class="field mt">
+      <label for="sch-time">Time (local, HH:MM)</label>
+      <input type="time" id="sch-time" name="time" value="{{ s.schedule.time }}" required>
+    </div>
+    <fieldset><legend>Days</legend>
+      <div class="row">
+      {% for d in ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] %}
+        <label class="check"><input type="checkbox" name="days" value="{{ d }}"{% if d in s.schedule.days %} checked{% endif %}> {{ d|capitalize }}</label>
+      {% endfor %}
+      </div>
+    </fieldset>
+    <label class="check"><input type="checkbox" name="desktop" value="1"{% if (s.notifications or {}).desktop %} checked{% endif %}> Desktop notifications (local mode)</label>
+    <div class="mt"><button type="submit" class="btn btn-primary">Save schedule</button></div>
+  </form>
+</section>
+
+{% else %}
+{# ------------------------------------------------------------ notifications (non-admin) #}
+<section class="card settings-section" id="notifications" aria-labelledby="h-notifications">
+  <h2 id="h-notifications">Notifications</h2>
+  <p class="small muted">The job search runs on the administrator's schedule; your jobs are scored and prepared on every run.</p>
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="section" value="notifications">
+    <label class="check"><input type="checkbox" name="desktop" value="1"{% if (s.notifications or {}).desktop %} checked{% endif %}> Desktop notifications (local mode)</label>
+    <div class="mt"><button type="submit" class="btn btn-primary">Save notifications</button></div>
+  </form>
+</section>
+{% endif %}
+
+{# ------------------------------------------------------------ password #}
+<section class="card settings-section" id="password" aria-labelledby="h-password">
+  <h2 id="h-password">Change password</h2>
+  <form method="post" action="/settings" class="container-narrow">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="section" value="password">
+    <div class="form-grid">
+      <div class="field"><label for="pw-cur">Current password</label><input type="password" id="pw-cur" name="current" autocomplete="current-password" required></div>
+      <div class="field"><label for="pw-new">New password</label><input type="password" id="pw-new" name="new" autocomplete="new-password" minlength="12" required aria-describedby="pw-rules"></div>
+      <div class="field"><label for="pw-new2">Repeat new password</label><input type="password" id="pw-new2" name="new2" autocomplete="new-password" minlength="12" required></div>
+    </div>
+    <p class="small muted" id="pw-rules">At least 12 characters, with upper- and lower-case letters and a digit. You will be signed out after changing it.</p>
+    <button type="submit" class="btn btn-primary">Change password</button>
+  </form>
+</section>
+
+{# ------------------------------------------------------------ data #}
+<section class="card settings-section" id="data" aria-labelledby="h-data">
+  <h2 id="h-data">Your data</h2>
+  <p><a class="btn" href="/settings/export.json">Download export (JSON)</a></p>
+  <p class="small muted">The export contains your settings, applications and resume version list. Back up the database regularly: copy the SQLite file when the app is stopped, or use your PostgreSQL provider’s backups ({{ db_kind }} in use).</p>
+</section>
+</div>
+{% endblock %}

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Users</h1>
+    <p>Approve who can sign in and manage accounts. You see account details and counts only, never another user's resumes, applications or settings.</p>
+  </div>
+</div>
+
+<section class="card section" id="pending" aria-labelledby="h-pending">
+  <h2 id="h-pending">Pending sign-ups <span class="badge b-amber{{ ' b-awaiting_approval' if pending }}">{{ pending|length }}</span></h2>
+  {% if pending %}
+  <p class="small muted">Every account is reviewed before it can sign in. Approving sends the person an email.</p>
+  <ul class="queue" aria-label="Sign-up requests awaiting approval">
+    {% for u in pending %}
+      {% set nm = u.full_name or u.username %}
+      <li class="queue-card" data-user-id="{{ u.id }}">
+        <div class="queue-who">
+          <span class="avatar lg" aria-hidden="true">{{ ((nm.split()|map('first')|join('')) if nm.split() else '?')[:2]|upper }}</span>
+          <div class="grow">
+            <h3 class="mb0">{{ u.full_name or '—' }}</h3>
+            <div class="small"><span class="muted">@</span>{{ u.username }}</div>
+          </div>
+          <span class="badge b-amber">Pending</span>
+        </div>
+        <dl class="queue-facts">
+          <div><dt>Email</dt><dd>{{ u.email or '—' }}</dd></div>
+          <div><dt>Requested</dt><dd class="nowrap">{{ m.dt(u.created_at) }}</dd></div>
+        </dl>
+        <div class="queue-actions" role="group" aria-label="Decide on {{ u.username }}">
+          <form method="post" action="/admin/users/{{ u.id }}/approve">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button type="submit" class="btn btn-primary btn-block" data-loading-text="Approving…"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg> Approve</button>
+          </form>
+          <form method="post" action="/admin/users/{{ u.id }}/reject">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button type="submit" class="btn btn-danger btn-block" data-loading-text="Rejecting…"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#x"></use></svg> Reject</button>
+          </form>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+    <div class="empty"><strong>Queue clear</strong>No sign-up requests are waiting.</div>
+  {% endif %}
+</section>
+
+<section class="card section" id="all-users" aria-labelledby="h-users">
+  <h2 id="h-users">All accounts</h2>
+  <div class="table-wrap">
+    <table>
+      <caption class="visually-hidden">All accounts</caption>
+      <thead><tr>
+        <th scope="col">Name</th><th scope="col">Email</th><th scope="col">Username</th><th scope="col">Role</th>
+        <th scope="col">Status</th><th scope="col">Created</th><th scope="col">Last sign-in</th>
+        <th scope="col" class="num">Applications</th><th scope="col" class="num">Resumes</th><th scope="col">Actions</th>
+      </tr></thead>
+      <tbody>
+      {% for u in users %}
+        <tr data-user-id="{{ u.id }}">
+          <td>{{ u.full_name or '—' }}</td>
+          <td>{{ u.email or '—' }}</td>
+          <td>{{ u.username }}</td>
+          <td>{{ 'Administrator' if u.role == 'admin' else 'User' }}</td>
+          <td><span class="badge {{ {'approved': 'b-green', 'pending': 'b-amber', 'rejected': 'b-grey', 'suspended': 'b-red'}.get(u.status, 'b-grey') }}">{{ u.status|capitalize }}</span></td>
+          <td class="nowrap">{{ m.d(u.created_at) }}</td>
+          <td class="nowrap">{{ m.dt(u.last_login_at) }}</td>
+          <td class="num">{{ u.applications }}</td>
+          <td class="num">{{ u.resumes }}</td>
+          <td>
+            {% if u.role != 'admin' %}
+            <div class="row" role="group" aria-label="Manage {{ u.username }}">
+              {% if u.status == 'approved' %}
+                <form method="post" action="/admin/users/{{ u.id }}/suspend" class="inline">
+                  <input type="hidden" name="csrf" value="{{ csrf }}">
+                  <button type="submit" class="btn btn-sm">Suspend</button>
+                </form>
+              {% elif u.status in ('suspended', 'rejected') %}
+                <form method="post" action="/admin/users/{{ u.id }}/reactivate" class="inline">
+                  <input type="hidden" name="csrf" value="{{ csrf }}">
+                  <button type="submit" class="btn btn-sm">Re-activate</button>
+                </form>
+              {% endif %}
+              <details class="disclosure">
+                <summary>Delete…</summary>
+                <div class="disclosure-body">
+                  <form method="post" action="/admin/users/{{ u.id }}/delete">
+                    <input type="hidden" name="csrf" value="{{ csrf }}">
+                    <p class="small">Deletes the account and <strong>all</strong> of its data permanently.</p>
+                    <div class="field">
+                      <label for="del-{{ u.id }}">Type <strong>{{ u.username }}</strong> to confirm</label>
+                      <input type="text" id="del-{{ u.id }}" name="confirm_username" autocomplete="off" required>
+                    </div>
+                    <button type="submit" class="btn btn-danger btn-sm">Delete account</button>
+                  </form>
+                </div>
+              </details>
+            </div>
+            {% else %}<span class="muted small">—</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card section" id="outbox" aria-labelledby="h-outbox">
+  <h2 id="h-outbox">Email</h2>
+  <dl class="facts">
+    <div><dt>Provider</dt><dd>{{ mail_provider }}{% if mail_provider == 'console' %} <span class="muted small">(not configured: messages are only recorded here)</span>{% endif %}</dd></div>
+    <div><dt>Approval requests go to</dt><dd>{{ admin_email or 'JOBAGENT_ADMIN_EMAIL not set' }}</dd></div>
+    <div><dt>Links in emails use</dt><dd>{{ public_url or 'JOBAGENT_PUBLIC_URL not set (links omitted)' }}</dd></div>
+  </dl>
+  <form method="post" action="/admin/test-email" class="row">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="field">
+      <label for="test-to">Send a test email to</label>
+      <input type="email" id="test-to" name="to" value="{{ admin_email or '' }}" maxlength="254">
+    </div>
+    <button type="submit" class="btn">Send test email</button>
+  </form>
+  <h3>Last 50 messages</h3>
+  {% if outbox %}
+  <div class="table-wrap">
+    <table>
+      <caption class="visually-hidden">Recent outgoing email</caption>
+      <thead><tr><th scope="col">Created</th><th scope="col">Kind</th><th scope="col">To</th><th scope="col">Subject</th><th scope="col">Status</th><th scope="col">Provider</th><th scope="col">Error</th></tr></thead>
+      <tbody>
+      {% for o in outbox %}
+        <tr>
+          <td class="nowrap">{{ m.dt(o.created_at) }}</td>
+          <td>{{ o.kind }}</td>
+          <td>{{ o.to_addr }}</td>
+          <td>{{ o.subject }}</td>
+          <td><span class="badge {{ {'sent': 'b-green', 'logged': 'b-grey', 'failed': 'b-red', 'queued': 'b-amber'}.get(o.status, 'b-grey') }}">{{ o.status }}</span></td>
+          <td>{{ o.provider }}</td>
+          <td class="small">{{ o.error or '' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted">No email has been sent yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

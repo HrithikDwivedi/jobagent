@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Sponsorship & Relocation{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Sponsorship & Relocation</h1>
+    <p>Open jobs with sponsorship evidence, plus official visa routes for your target countries.</p>
+  </div>
+</div>
+
+<div class="alert alert-info" role="note">
+  <strong>Evidence, not guarantees.</strong> Classifications come from statements in the listings and public registers. A sponsor licence or a positive statement does not guarantee a visa for you. Gross salary vs. net take-home and cost of living are not estimated, because reliable data is not available here. Always confirm with the employer and the official sources.
+</div>
+
+<section class="card" aria-labelledby="reg-h">
+  <h2 id="reg-h">UK Home Office Register of Licensed Sponsors</h2>
+  {% if register %}
+    <p>Loaded file <strong>{{ register.original_name }}</strong>, downloaded {{ m.dt(register.created_at) }}. Employers of UK jobs are matched against it by normalised legal name — a match shows a licence, not that a specific role will be sponsored.</p>
+  {% else %}
+    <p class="muted">The register has not been downloaded yet. It is fetched automatically during an agent run when the “uk_sponsor_register” source is enabled in <a href="/settings#sources">Settings</a>.</p>
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="jobs-h">
+  <h2 id="jobs-h">Open jobs with sponsorship evidence</h2>
+  {% if rows %}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Role</th><th scope="col">Employer</th><th scope="col">Country</th><th scope="col">Classification</th><th scope="col">Evidence</th><th scope="col">Assessed</th><th scope="col" class="num">Score</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td><a href="/jobs/{{ r.id }}">{{ r.title }}</a></td>
+          <td>{{ r.employer }}{% if r.uk_sponsor_status == 'listed' %} <span class="badge b-teal">UK licensed</span>{% endif %}</td>
+          <td>{{ countries.get(r.country, r.country) if r.country else '—' }}{% if r.city %}<div class="small muted">{{ r.city }}</div>{% endif %}</td>
+          <td>{{ m.spon_badge(r.classification, True) }}</td>
+          <td class="wrap-long small">
+            {% if r.evidence %}
+              {% for e in r.evidence[:3] %}
+                <blockquote>“{{ e.text }}”</blockquote>
+                <span class="muted">{{ e.kind|replace('_', ' ') }}{% if e.source and e.source.startswith('https://') %} · {{ m.ext(e.source, 'source') }}{% endif %}</span>
+              {% endfor %}
+              {% if r.evidence|length > 3 %}<div class="muted">+{{ r.evidence|length - 3 }} more on the job page</div>{% endif %}
+            {% else %}—{% endif %}
+            {% if r.relocation_text %}<div class="mt"><strong>Relocation:</strong> {{ r.relocation_text }}</div>{% endif %}
+          </td>
+          <td class="nowrap small">{{ m.d(r.assessed_at) }}</td>
+          <td class="num">{{ r.score|round|int if r.score is not none else '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <div class="empty"><strong>No sponsorship evidence yet</strong>Run the agent from <a href="/runs">Agent Runs</a>; listings that mention sponsorship appear here.</div>
+  {% endif %}
+</section>
+
+<h2 class="mt">Visa routes for your target countries</h2>
+<div class="grid grid-auto">
+  {% for c in targets %}
+    {% set g = guidance.get(c) %}
+    <section class="card" aria-labelledby="g-{{ c }}">
+      <h3 id="g-{{ c }}">{{ countries.get(c, c) }}</h3>
+      {% if g %}
+        <p><strong>{{ g[0] }}</strong></p>
+        <p>{{ m.ext(g[1], 'Official guidance') }}</p>
+        {% if g[2] %}
+          <p class="small muted mb0">Ask the employer:</p>
+          <ul class="small">{% for q in g[2] %}<li>{{ q }}</li>{% endfor %}</ul>
+        {% endif %}
+      {% else %}
+        <p class="muted">No curated guidance for this country yet. Check the government’s official immigration website.</p>
+      {% endif %}
+    </section>
+  {% else %}
+    <div class="card empty"><strong>No target countries</strong>Add some in <a href="/settings#search">Settings</a>.</div>
+  {% endfor %}
+</div>
+{% endblock %}

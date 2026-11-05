@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="same-origin">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#ffffff">
+  <title>{% block title %}JobAgent{% endblock %} · JobAgent</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/boot.js"></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+{% set nav_items = [
+  ("/", "Overview", "overview"),
+  ("/jobs", "Jobs", "jobs"),
+  ("/mnc", "Top MNCs", "mnc"),
+  ("/applications", "Applications", "applications"),
+  ("/sponsorship", "Sponsorship & Relocation", "sponsorship"),
+  ("/prep", "Skills & Prep", "prep"),
+  ("/studio", "Resume Studio", "studio"),
+  ("/runs", "Agent Runs", "runs"),
+  ("/audit", "Audit Log", "audit"),
+  ("/settings", "Settings", "settings"),
+] %}
+{% if is_admin %}{% set nav_items = nav_items + [("/admin/users", "Users", "users")] %}{% endif %}
+{% set display_name = user_name or user or '' %}
+{% set initials = (display_name.split()|map('first')|join('') if display_name.split() else '?')[:2]|upper %}
+<div class="app">
+  <header class="topbar">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"><svg class="ico"><use href="/static/icons.svg#logo"></use></svg></span> JobAgent</a>
+    <div class="row">
+      <button type="button" class="icon-btn theme-toggle" data-theme-toggle aria-label="Switch colour theme" hidden><svg class="ico i-moon" aria-hidden="true"><use href="/static/icons.svg#moon"></use></svg><svg class="ico i-sun" aria-hidden="true"><use href="/static/icons.svg#sun"></use></svg></button>
+      <button type="button" class="btn btn-sm" data-nav-toggle aria-controls="sidebar" aria-expanded="false"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#menu"></use></svg> Menu</button>
+    </div>
+  </header>
+  <nav class="sidebar" id="sidebar" aria-label="Main navigation">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"><svg class="ico"><use href="/static/icons.svg#logo"></use></svg></span> <span class="brand-name">JobAgent</span></a>
+    <button type="button" class="icon-btn nav-close" data-nav-toggle aria-controls="sidebar" aria-label="Close menu"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+        <ul class="nav">
+      {% for href, label, ico in nav_items %}
+        {% set active = (path == href) if href == "/" else (path == href or path.startswith(href ~ "/") or (href == "/studio" and path.startswith("/letters"))) %}
+        <li><a href="{{ href }}"{% if active %} aria-current="page"{% endif %}><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="/static/icons.svg#{{ ico }}"></use></svg><span>{{ label }}</span></a></li>
+      {% endfor %}
+    </ul>
+    <div class="sidebar-foot">
+      {% if user %}
+        <div class="user-chip">
+          <span class="avatar" aria-hidden="true">{{ initials }}</span>
+          <div class="who"><span class="muted small">Signed in as</span> <strong class="truncate">{{ user }}</strong></div>
+          {% if is_admin %}<span class="badge b-purple">Admin</span>{% endif %}
+        </div>
+        <div class="foot-actions">
+          <form method="post" action="/logout">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button type="submit" class="btn btn-sm" data-loading-text="Signing out…"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#logout"></use></svg> Sign out</button>
+          </form>
+          <button type="button" class="icon-btn theme-toggle" data-theme-toggle aria-label="Switch colour theme" hidden><svg class="ico i-moon" aria-hidden="true"><use href="/static/icons.svg#moon"></use></svg><svg class="ico i-sun" aria-hidden="true"><use href="/static/icons.svg#sun"></use></svg></button>
+        </div>
+      {% endif %}
+      {% if deployment == 'vercel' %}<div class="muted small mt">Hosted on Vercel</div>{% endif %}
+    </div>
+  </nav>
+  <main class="main" id="main" tabindex="-1">
+    {% if flash %}
+      <div class="toast-region">
+        <div class="alert toast {{ 'alert-ok' if flash.k == 'ok' else 'alert-error' }}" role="{{ 'status' if flash.k == 'ok' else 'alert' }}">
+          <svg class="toast-ico" aria-hidden="true"><use href="/static/icons.svg#{{ 'check-circle' if flash.k == 'ok' else 'alert' }}"></use></svg>
+          <div class="toast-msg">{{ flash.m }}</div>
+          <button type="button" class="toast-close" data-dismiss aria-label="Dismiss message" hidden><svg aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+        </div>
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

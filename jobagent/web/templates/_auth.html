@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#ffffff">
+  {% block head_extra %}{% endblock %}
+  <title>{% block title %}JobAgent{% endblock %} · JobAgent</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/boot.js"></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body class="auth-body">
+<div class="auth-shell">
+  <aside class="auth-hero" aria-label="About JobAgent">
+    <div class="hero-top">
+      <a class="brand" href="/login"><span class="brand-mark" aria-hidden="true"><svg class="ico"><use href="/static/icons.svg#logo"></use></svg></span> JobAgent</a>
+      <p class="hero-title">Find, tailor and track job applications in one place</p>
+      <p class="hero-lead">Verified listings, transparent match scores and application packages prepared for your review.</p>
+    </div>
+    <ul class="hero-features">
+      <li><span class="fi" aria-hidden="true"><svg><use href="/static/icons.svg#search"></use></svg></span><div><strong>Verified listings</strong><span>From official job-board APIs and employer career sites, de-duplicated and re-checked.</span></div></li>
+      <li><span class="fi" aria-hidden="true"><svg><use href="/static/icons.svg#target"></use></svg></span><div><strong>Transparent match scores</strong><span>Skills, seniority, sponsorship and location, with the reasoning shown.</span></div></li>
+      <li><span class="fi" aria-hidden="true"><svg><use href="/static/icons.svg#shield-check"></use></svg></span><div><strong>You approve every application</strong><span>Tailored resume, cover letter and answers. Nothing is sent without your approval.</span></div></li>
+    </ul>
+    <div class="mock" aria-hidden="true">
+      <div class="mock-head"><span>Recommended for you</span><span class="mock-dots"><i></i><i></i><i></i></span></div>
+      <div class="mock-row">
+        <span class="mono mono-0">AP</span>
+        <div class="grow"><strong>Software Engineer, Payments</strong><span>Dublin, Ireland · Hybrid</span></div>
+        <span class="badge b-green">Sponsorship</span>
+        <span class="score-pill s-high">92</span>
+      </div>
+      <div class="mock-row">
+        <span class="mono mono-2">TD</span>
+        <div class="grow"><strong>Backend Engineer (Python)</strong><span>London, United Kingdom · On-site</span></div>
+        <span class="badge b-blue">Ready to apply</span>
+        <span class="score-pill s-high">84</span>
+      </div>
+      <div class="mock-row">
+        <span class="mono mono-4">NB</span>
+        <div class="grow"><strong>Platform Engineer</strong><span>Berlin, Germany · Remote</span></div>
+        <span class="badge b-teal">Interview</span>
+        <span class="score-pill s-mid">67</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="auth-panel" id="main">
+    <div class="auth-card">
+      {% block card %}{% endblock %}
+    </div>
+    <div class="auth-tools">
+      <button type="button" class="btn btn-ghost btn-sm theme-toggle" data-theme-toggle aria-label="Switch colour theme" hidden><svg class="ico i-moon" aria-hidden="true"><use href="/static/icons.svg#moon"></use></svg><svg class="ico i-sun" aria-hidden="true"><use href="/static/icons.svg#sun"></use></svg><span class="theme-label">Theme</span></button>
+    </div>
+  </main>
+</div>
+</body>
+</html>

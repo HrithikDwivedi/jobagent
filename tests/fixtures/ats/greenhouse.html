@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<!-- SYNTHETIC fixture mimicking the job-boards.greenhouse.io application form markup (React-select comboboxes,
+     intl phone country picker, resume/cover-letter uploads, custom questions, voluntary EEO section). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Job Application for Software Engineer at Acme</title>
+{{CAPTCHA_HEAD}}
+<style>
+  body { font-family: sans-serif; max-width: 760px; margin: 20px auto; }
+  .field-wrapper { margin: 14px 0; position: relative; }
+  .select__container { position: relative; }
+  .select__menu { position: absolute; z-index: 9; background: #fff; border: 1px solid #999; width: 100%; }
+  .select__option { padding: 6px; cursor: pointer; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+  .select__required-input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+  .helper-text--error { color: #c00; }
+  input[type=text], input[type=tel], textarea { width: 100%; }
+</style>
+</head>
+<body>
+<div class="job__header"><h1 class="section-header">Software Engineer</h1><p>Acme &middot; Dublin, Ireland</p></div>
+<div class="job__description"><p>Thank you for your interest in Acme. We build C# and .NET services.</p></div>
+<div class="application--container">
+<form id="application-form" class="application--form" method="POST" action="{{ACTION}}" enctype="multipart/form-data" novalidate>
+  <h2 class="section-header">Apply for this job</h2>
+  <div class="field-wrapper">
+    <label id="first_name-label" for="first_name" class="label">First Name<span class="required">*</span></label>
+    <input id="first_name" name="first_name" type="text" aria-required="true" autocomplete="given-name">
+  </div>
+  <div class="field-wrapper">
+    <label id="last_name-label" for="last_name" class="label">Last Name<span class="required">*</span></label>
+    <input id="last_name" name="last_name" type="text" aria-required="true" autocomplete="family-name">
+  </div>
+  <div class="field-wrapper">
+    <label id="email-label" for="email" class="label">Email<span class="required">*</span></label>
+    <input id="email" name="email" type="text" aria-required="true" autocomplete="email">
+  </div>
+  <div class="field-wrapper phone-input">
+    <div class="select">
+      <label id="country-label" for="country" class="label">Country<span class="required">*</span></label>
+      <div class="select__container">
+        <input id="country" role="combobox" aria-required="true" aria-expanded="false" aria-autocomplete="list"
+               class="select__input" autocomplete="off" data-options="Ireland +353|India +91|United Kingdom +44|British Indian Ocean Territory +246">
+        <div class="select__single-value"></div>
+        <input type="hidden" name="phone_country" value="">
+        <input class="select__required-input" aria-hidden="true" tabindex="-1" required value="">
+      </div>
+    </div>
+    <label id="phone-label" for="phone" class="label">Phone<span class="required">*</span></label>
+    <input id="phone" name="phone" type="tel" aria-required="true">
+    <div class="iti__dropdown-content" style="display:none"><input type="search" class="iti__search-input" aria-label="Search"></div>
+  </div>
+  <div class="field-wrapper">
+    <div class="select">
+      <label id="candidate-location-label" for="candidate-location" class="label">Location (City)<span class="required">*</span></label>
+      <div class="select__container">
+        <input id="candidate-location" role="combobox" aria-required="true" aria-expanded="false" aria-autocomplete="list"
+               class="select__input" autocomplete="off" data-typeahead="1"
+               data-options="Mumbai, Maharashtra, India|Munich, Bavaria, Germany|Dublin, County Dublin, Ireland">
+        <div class="select__single-value"></div>
+        <input type="hidden" name="location" value="">
+        <input class="select__required-input" aria-hidden="true" tabindex="-1" required value="">
+      </div>
+    </div>
+  </div>
+  <div class="field-wrapper file-upload" id="upload-label-resume" data-field="resume">
+    <div class="label upload-label" id="resume-label">Resume/CV<span class="required">*</span></div>
+    <button type="button" class="btn">Attach</button>
+    <input id="resume" name="resume" type="file" class="visually-hidden" aria-required="true" aria-labelledby="resume-label" accept=".pdf,.doc,.docx,.txt,.rtf">
+    <button type="button" class="btn">Enter manually</button>
+  </div>
+  <div class="field-wrapper file-upload" id="upload-label-cover_letter" data-field="cover_letter">
+    <div class="label upload-label" id="cover_letter-label">Cover Letter</div>
+    <button type="button" class="btn">Attach</button>
+    <input id="cover_letter" name="cover_letter" type="file" class="visually-hidden" aria-labelledby="cover_letter-label" accept=".pdf,.doc,.docx,.txt,.rtf">
+    <button type="button" class="btn" id="cover_letter_manual">Enter manually</button>
+    <textarea id="cover_letter_text" name="cover_letter_text" aria-labelledby="cover_letter-label" rows="6" style="display:none"></textarea>
+  </div>
+
+  <div class="field-wrapper">
+    <label id="question_1-label" for="question_1" class="label">LinkedIn Profile</label>
+    <input id="question_1" name="question_1" type="text">
+  </div>
+  <div class="field-wrapper">
+    <label id="question_2-label" for="question_2" class="label">Website</label>
+    <input id="question_2" name="question_2" type="text">
+  </div>
+  <div class="field-wrapper">
+    <div class="select">
+      <label id="question_3-label" for="question_3" class="label">Are you legally authorized to work in Ireland?<span class="required">*</span></label>
+      <div class="select__container">
+        <input id="question_3" role="combobox" aria-required="true" aria-expanded="false" class="select__input" autocomplete="off" data-options="Yes|No">
+        <div class="select__single-value"></div>
+        <input type="hidden" name="question_3" value="">
+        <input class="select__required-input" aria-hidden="true" tabindex="-1" required value="">
+      </div>
+    </div>
+  </div>
+  <div class="field-wrapper">
+    <div class="select">
+      <label id="question_4-label" for="question_4" class="label">Will you now or in the future require visa sponsorship to work in Ireland?<span class="required">*</span></label>
+      <div class="select__container">
+        <input id="question_4" role="combobox" aria-required="true" aria-expanded="false" class="select__input" autocomplete="off" data-options="Yes|No">
+        <div class="select__single-value"></div>
+        <input type="hidden" name="question_4" value="">
+        <input class="select__required-input" aria-hidden="true" tabindex="-1" required value="">
+      </div>
+    </div>
+  </div>
+  <div class="field-wrapper">
+    <div class="select">
+      <label id="question_5-label" for="question_5" class="label">How did you hear about this job?<span class="required">*</span></label>
+      <div class="select__container">
+        <input id="question_5" role="combobox" aria-required="true" aria-expanded="false" class="select__input" autocomplete="off" data-options="LinkedIn|Company Website|Referral|Other">
+        <div class="select__single-value"></div>
+        <input type="hidden" name="question_5" value="">
+        <input class="select__required-input" aria-hidden="true" tabindex="-1" required value="">
+      </div>
+    </div>
+  </div>
+  {{EXTRA}}
+  <div id="demographic-questions" class="demographic-section">
+    <h3>Voluntary Self-Identification</h3>
+    <p>Completion of this form is voluntary.</p>
+    <div class="field-wrapper"><div class="select">
+      <label id="gender-label" for="gender" class="label">Gender</label>
+      <div class="select__container">
+        <input id="gender" role="combobox" aria-expanded="false" class="select__input" autocomplete="off" data-options="Male|Female|Decline To Self Identify">
+        <div class="select__single-value"></div><input type="hidden" name="gender" value="">
+      </div></div></div>
+    <div class="field-wrapper"><div class="select">
+      <label id="hispanic_ethnicity-label" for="hispanic_ethnicity" class="label">Are you Hispanic/Latino?</label>
+      <div class="select__container">
+        <input id="hispanic_ethnicity" role="combobox" aria-expanded="false" class="select__input" autocomplete="off" data-options="Yes|No|Decline To Self Identify">
+        <div class="select__single-value"></div><input type="hidden" name="hispanic_ethnicity" value="">
+      </div></div></div>
+    <div class="field-wrapper"><div class="select">
+      <label id="veteran_status-label" for="veteran_status" class="label">Veteran Status</label>
+      <div class="select__container">
+        <input id="veteran_status" role="combobox" aria-expanded="false" class="select__input" autocomplete="off" data-options="I am not a protected veteran|I identify as one or more of the classifications of a protected veteran|I don't wish to answer">
+        <div class="select__single-value"></div><input type="hidden" name="veteran_status" value="">
+      </div></div></div>
+    <div class="field-wrapper"><div class="select">
+      <label id="disability_status-label" for="disability_status" class="label">Disability Status</label>
+      <div class="select__container">
+        <input id="disability_status" role="combobox" aria-expanded="false" class="select__input" autocomplete="off" data-options="Yes, I have a disability (or previously had a disability)|No, I do not have a disability and have not had one in the past|I do not want to answer">
+        <div class="select__single-value"></div><input type="hidden" name="disability_status" value="">
+      </div></div></div>
+  </div>
+  <input type="text" name="website_hp" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+  {{CAPTCHA_BODY}}
+  <div id="form-errors" class="helper-text--error"></div>
+  <button type="submit" class="btn btn--pill">Submit application</button>
+</form>
+</div>
+<script>
+document.querySelectorAll('input[role=combobox]').forEach(function (inp) {
+  var box = inp.closest('.select__container');
+  var hidden = box.querySelector('input[type=hidden]');
+  var shadow = box.querySelector('.select__required-input');
+  var sv = box.querySelector('.select__single-value');
+  var all = (inp.dataset.options || '').split('|').filter(Boolean);
+  var typeahead = inp.dataset.typeahead === '1';
+  var menu = null;
+  function close() { if (menu) { menu.remove(); menu = null; inp.setAttribute('aria-expanded', 'false'); } }
+  function open(filter) {
+    close();
+    if (typeahead && !filter) return;
+    var list = all.filter(function (o) { return !filter || o.toLowerCase().indexOf(filter.toLowerCase()) >= 0; });
+    menu = document.createElement('div');
+    menu.className = 'select__menu'; menu.setAttribute('role', 'listbox');
+    list.forEach(function (o, i) {
+      var d = document.createElement('div');
+      d.className = 'select__option'; d.setAttribute('role', 'option'); d.id = 'react-select-' + inp.id + '-option-' + i;
+      d.textContent = o;
+      d.addEventListener('mousedown', function (ev) {
+        ev.preventDefault();
+        hidden.value = o; if (shadow) shadow.value = o; sv.textContent = o; inp.value = typeahead ? o : '';
+        close();
+      });
+      menu.appendChild(d);
+    });
+    box.appendChild(menu); inp.setAttribute('aria-expanded', 'true');
+  }
+  inp.addEventListener('mousedown', function () { open(typeahead ? inp.value : ''); });
+  inp.addEventListener('input', function () { open(inp.value); });
+  inp.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  inp.addEventListener('blur', function () { setTimeout(close, 150); });
+});
+document.getElementById('cover_letter_manual').addEventListener('click', function () {
+  document.getElementById('cover_letter_text').style.display = 'block';
+});
+document.getElementById('application-form').addEventListener('submit', function (ev) {
+  var missing = [];
+  document.querySelectorAll('#application-form [aria-required=true]').forEach(function (e) {
+    if (e.getAttribute('role') === 'combobox') {
+      var box = e.closest('.select__container');
+      if (!box.querySelector('input[type=hidden]').value) missing.push(e.id);
+    } else if (e.type === 'file') { if (!e.files.length) missing.push(e.id); }
+    else if (!e.value) missing.push(e.id);
+  });
+  document.querySelectorAll('#application-form input[type=checkbox][required]').forEach(function (e) {
+    if (!e.checked) missing.push(e.id || e.name);
+  });
+  if (missing.length) { ev.preventDefault(); document.getElementById('form-errors').textContent = 'Please complete: ' + missing.join(', '); }
+});
+</script>
+</body>
+</html>

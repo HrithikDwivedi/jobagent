@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Audit Log{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Audit Log</h1>
+    <p>Append-only, hash-chained record of every state change. Showing the latest 300 events you are allowed to see.</p>
+  </div>
+  <div>
+    {% if chain_ok %}
+      <span class="badge b-green">✓ Hash chain intact</span>
+    {% else %}
+      <span class="badge b-red">✗ Chain broken at event #{{ bad_id }}</span>
+    {% endif %}
+  </div>
+</div>
+{% if not chain_ok %}<div class="alert alert-error" role="alert">The audit chain does not verify at event #{{ bad_id }}. The log may have been tampered with.</div>{% endif %}
+
+<nav class="chips" aria-label="Filter by entity">
+  <a class="chip" href="/audit"{% if not entity %} aria-current="true"{% endif %}>All</a>
+  {% for e in (['application', 'job', 'resume', 'settings', 'auth', 'run'] + (['admin'] if is_admin else [])) %}
+    <a class="chip" href="/audit?entity={{ e }}"{% if entity == e %} aria-current="true"{% endif %}>{{ e|capitalize }}</a>
+  {% endfor %}
+</nav>
+
+{% if rows %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col" class="num">#</th><th scope="col">At</th><th scope="col">Actor</th><th scope="col">Entity</th><th scope="col">Action</th><th scope="col">Status change</th><th scope="col">Detail</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="num">{{ r.id }}</td>
+        <td class="nowrap small">{{ m.dt(r.at, 19) }}</td>
+        <td class="small">{{ r.actor }}</td>
+        <td class="small">{% if r.entity == 'application' and r.entity_id %}<a href="/applications/{{ r.entity_id }}">application #{{ r.entity_id }}</a>{% elif r.entity == 'job' and r.entity_id %}<a href="/jobs/{{ r.entity_id }}">job #{{ r.entity_id }}</a>{% elif r.entity == 'run' and r.entity_id %}<a href="/runs/{{ r.entity_id }}">run {{ r.entity_id[:8] }}</a>{% else %}{{ r.entity }}{% if r.entity_id %} #{{ r.entity_id }}{% endif %}{% endif %}</td>
+        <td>{{ r.action|replace('_', ' ') }}</td>
+        <td class="small">{% if r.from_status or r.to_status %}{{ labels.get(r.from_status, r.from_status or '—') }} → {{ labels.get(r.to_status, r.to_status or '—') }}{% else %}—{% endif %}</td>
+        <td class="small wrap-long"><code title="{{ r.detail_json }}">{{ r.detail_json|truncate(140, True) if r.detail_json and r.detail_json != '{}' else '—' }}</code></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+  <div class="card empty"><strong>No audit events</strong>Events appear as you and the agent take actions.</div>
+{% endif %}
+{% endblock %}

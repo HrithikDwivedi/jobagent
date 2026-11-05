@@ -1,0 +1,14 @@
+# Paths are anchored to the project root with a leading "/" so that package folders with the same
+# name (e.g. jobagent/data/ which holds the MNC catalogue) are still deployed.
+/.venv
+/data
+/tests
+/reports
+/scripts
+/.github
+*.db
+.pytest_cache
+__pycache__
+.env*
+!.env.example
+.vercel

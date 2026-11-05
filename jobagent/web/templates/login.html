@@ -1,0 +1,37 @@
+{% extends "_auth.html" %}
+{% block title %}Sign in{% endblock %}
+{% block card %}
+    <h1>Sign in to JobAgent</h1>
+    <p class="sub">Welcome back. Enter your details to continue.</p>
+    {% if flash %}
+      <div class="alert {{ 'alert-ok' if flash.k == 'ok' else 'alert-error' }}" role="{{ 'status' if flash.k == 'ok' else 'alert' }}">{{ flash.m }}</div>
+    {% endif %}
+    {% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+    {% if notice %}
+      <div class="alert {{ 'alert-warn' if account_status == 'pending' else 'alert-error' }}" role="alert" data-account-status="{{ account_status }}">
+        {% if account_status == 'pending' %}<strong>Awaiting approval.</strong> {% endif %}{{ notice }}
+        {% if account_status == 'pending' %}<p class="small mt mb0">An admin reviews every account before it can sign in. You will get an email as soon as a decision is made.</p>{% endif %}
+      </div>
+    {% endif %}
+    <form method="post" action="/login">
+      <input type="hidden" name="pre_csrf" value="{{ pre_csrf }}">
+      <input type="hidden" name="next" value="{{ next }}">
+      <div class="field">
+        <label for="username">Username</label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#user"></use></svg>
+          <input type="text" id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+        </div>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#lock"></use></svg>
+          <input type="password" id="password" name="password" autocomplete="current-password" required>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg" data-loading-text="Signing you in…">Sign in</button>
+    </form>
+    <p class="auth-switch">New here? <a href="/signup">Request an account</a></p>
+    <p class="auth-foot mb0"><svg aria-hidden="true"><use href="/static/icons.svg#shield-check"></use></svg><span>Private dashboard. New accounts need administrator approval. Repeated failed attempts are rate-limited.</span></p>
+{% endblock %}

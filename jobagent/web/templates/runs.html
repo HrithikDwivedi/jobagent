@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Agent Runs{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Agent Runs</h1>
+    <p>Each run discovers jobs from the enabled sources, de-duplicates, verifies, assesses sponsorship, scores and prepares drafts. It never submits anything.</p>
+  </div>
+  <form method="post" action="/runs/start" data-overlay="{{ 'run' if is_admin else 'score' }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="btn btn-primary btn-lg btn-cta"{% if running %} disabled{% endif %} data-loading-text="{{ 'Agent running…' if is_admin else 'Scoring…' }}"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#{{ 'runs' if is_admin else 'target' }}"></use></svg> {{ "Run agent now" if is_admin else "Score my jobs now" }}</button>
+  </form>
+</div>
+{% if running %}<div class="alert alert-info" role="status">A run is in progress. Refresh this page to follow it.</div>{% endif %}
+{% if deployment == 'vercel' %}
+  <div class="alert alert-info" role="note">On Vercel each run is time-boxed (about 4½ minutes; keep this page open while it runs). A run that ends “partial” continues with the remaining sources and unscored jobs on the next run — just click “Run agent now” again.</div>
+{% endif %}
+
+{% if rows %}
+<div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th scope="col">Started</th><th scope="col">Kind</th><th scope="col">Trigger</th><th scope="col">Status</th><th scope="col">Finished</th>
+      <th scope="col" class="num">New</th><th scope="col" class="num">Duplicates</th><th scope="col" class="num">Scored</th><th scope="col" class="num">Prepared</th><th scope="col" class="num">Closed</th>
+      <th scope="col" class="num">Errors</th><th scope="col" class="num">AI cost</th><th scope="col"><span class="visually-hidden">Details</span></th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="nowrap">{{ m.dt(r.started_at) }}</td>
+        <td>{{ r.kind }}</td>
+        <td>{{ r.trigger }}</td>
+        <td><span class="badge b-{{ r.status }}">{{ r.status }}</span></td>
+        <td class="nowrap">{{ m.dt(r.finished_at) }}</td>
+        <td class="num">{{ r.stats.get('new_jobs', '—') }}</td>
+        <td class="num">{{ r.stats.get('duplicates', '—') }}</td>
+        <td class="num">{{ r.stats.get('scored', '—') }}</td>
+        <td class="num">{{ r.stats.get('prepared', '—') }}</td>
+        <td class="num">{{ r.stats.get('closed', '—') }}</td>
+        <td class="num">{% if r.errors %}<span class="badge b-red">{{ r.errors|length }}</span>{% else %}0{% endif %}</td>
+        <td class="num">${{ '%.4f'|format(r.ai_cost_usd or 0) }}</td>
+        <td><a class="nowrap" href="/runs/{{ r.id }}">Details<span class="visually-hidden"> for run started {{ m.dt(r.started_at) }}</span></a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+  <div class="card empty"><strong>No runs yet</strong>Press “Run agent now” to discover and score jobs.</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Jobs{% endblock %}
+{% block content %}
+{% set qs_prefix = (base_qs ~ '&') if base_qs else '' %}
+{% set back = request.url.path ~ (('?' ~ request.url.query) if request.url.query else '') %}
+<div class="page-head">
+  <div>
+    <h1>Jobs</h1>
+    <p>Verified listings from official job-board APIs. Pick filter options and press <em>Show results</em>.</p>
+  </div>
+  <div class="actions">
+    <a class="btn btn-sm" href="/jobs/export.csv{{ ('?' ~ base_qs) if base_qs }}">{{ m.ico('download') }} Export CSV</a>
+  </div>
+</div>
+
+<form method="get" action="/jobs" id="job-search" class="job-search" aria-label="Job search and filters">
+  <div class="searchbar" role="search" aria-label="Job search">
+    <div class="field">
+      <label for="q" class="visually-hidden">Keywords</label>
+      <div class="input-wrap">{{ m.ico('search', 'lead') }}<input type="search" id="q" name="q" value="{{ f.q }}" placeholder="Title, skill or company" maxlength="100"></div>
+    </div>
+    <div class="field">
+      <label for="location" class="visually-hidden">Location</label>
+      <div class="input-wrap">{{ m.ico('pin', 'lead') }}<input type="search" id="location" name="location" value="{{ f.location }}" placeholder="City or country code (e.g. Dublin, DE)" maxlength="60"></div>
+    </div>
+    <button type="submit" class="btn btn-primary" data-loading-text="Searching…">{{ m.ico('search') }} Search</button>
+  </div>
+
+  <div class="pillbar" aria-label="Filters">
+    <details class="pill{{ ' active' if f.date_posted != 'any' }}">
+      <summary>{{ opts.date_posted[f.date_posted] if f.date_posted != 'any' else 'Date posted' }}</summary>
+      <div class="pill-panel">
+        <fieldset><legend>Date posted</legend>
+          {% for k, v in opts.date_posted.items() %}
+            <label class="check"><input type="radio" name="date_posted" value="{{ k }}"{% if f.date_posted == k %} checked{% endif %}> {{ v }}</label>
+          {% endfor %}
+        </fieldset>
+        <div class="panel-foot"><button type="submit" class="btn btn-primary btn-sm">Show results</button></div>
+      </div>
+    </details>
+
+    <details class="pill{{ ' active' if f.experience }}">
+      <summary>Experience level{% if f.experience %} <span class="pill-count"><span class="visually-hidden">(</span>{{ f.experience|length }}<span class="visually-hidden"> selected)</span></span>{% endif %}</summary>
+      <div class="pill-panel">
+        <fieldset><legend>Experience level</legend>
+          {% for k, v in opts.experience.items() %}
+            <label class="check"><input type="checkbox" name="experience" value="{{ k }}"{% if k in f.experience %} checked{% endif %}> {{ v }} <span class="count">{{ facets.experience.get(k, 0) }}</span></label>
+          {% endfor %}
+        </fieldset>
+        <div class="panel-foot"><button type="submit" class="btn btn-primary btn-sm">Show results</button></div>
+      </div>
+    </details>
+
+    <details class="pill{{ ' active' if f.job_type }}">
+      <summary>Job type{% if f.job_type %} <span class="pill-count"><span class="visually-hidden">(</span>{{ f.job_type|length }}<span class="visually-hidden"> selected)</span></span>{% endif %}</summary>
+      <div class="pill-panel">
+        <fieldset><legend>Job type</legend>
+          {% for k, v in opts.job_type.items() %}
+            <label class="check"><input type="checkbox" name="job_type" value="{{ k }}"{% if k in f.job_type %} checked{% endif %}> {{ v }} <span class="count">{{ facets.job_type.get(k, 0) }}</span></label>
+          {% endfor %}
+        </fieldset>
+        <div class="panel-foot"><button type="submit" class="btn btn-primary btn-sm">Show results</button></div>
+      </div>
+    </details>
+
+    <details class="pill{{ ' active' if f.remote }}">
+      <summary>On-site / Remote{% if f.remote %} <span class="pill-count"><span class="visually-hidden">(</span>{{ f.remote|length }}<span class="visually-hidden"> selected)</span></span>{% endif %}</summary>
+      <div class="pill-panel">
+        <fieldset><legend>Work arrangement</legend>
+          {% for k, v in opts.remote.items() %}
+            <label class="check"><input type="checkbox" name="remote" value="{{ k }}"{% if k in f.remote %} checked{% endif %}> {{ v }} <span class="count">{{ facets.remote.get(k, 0) }}</span></label>
+          {% endfor %}
+        </fieldset>
+        <div class="panel-foot"><button type="submit" class="btn btn-primary btn-sm">Show results</button></div>
+      </div>
+    </details>
+
+    <details class="pill{{ ' active' if f.countries }}">
+      <summary>Country{% if f.countries %} <span class="pill-count"><span class="visually-hidden">(</span>{{ f.countries|length }}<span class="visually-hidden"> selected)</span></span>{% endif %}</summary>
+      <div class="pill-panel">
+        <fieldset><legend>Country</legend>
+          {% for c in target_countries|unique %}
+            <label class="check"><input type="checkbox" name="country" value="{{ c }}"{% if c in f.countries %} checked{% endif %}> {{ countries.get(c, c) }} <span class="count">{{ facets.country.get(c, 0) }}</span></label>
+          {% endfor %}
+        </fieldset>
+        <div class="panel-foot"><button type="submit" class="btn btn-primary btn-sm">Show results</button></div>
+      </div>
+    </details>
+
+    <details class="pill{{ ' active' if f.company }}">
+      <summary>{{ ('Company: ' ~ f.company) if f.company else 'Company' }}</summary>
+      <div class="pill-panel">
+        <div class="field">
+          <label for="company">Company name contains</label>
+          <input type="text" id="company" name="company" value="{{ f.company }}" maxlength="80">
+        </div>
+        <div class="panel-foot"><button type="submit" class="btn btn-primary btn-sm">Show results</button></div>
+      </div>
+    </details>
+
+    <details class="pill{{ ' active' if f.salary_min or f.has_salary }}">
+      <summary>Salary</summary>
+      <div class="pill-panel">
+        <div class="field">
+          <label for="salary_min">Minimum (top of range, listing currency)</label>
+          <input type="number" id="salary_min" name="salary_min" min="0" max="1000000" step="1000" value="{{ f.salary_min or '' }}">
+        </div>
+        <label class="check"><input type="checkbox" name="has_salary" value="1"{% if f.has_salary %} checked{% endif %}> Only jobs that publish a salary</label>
+        <p class="small muted">Salaries are compared as published (gross, listing currency). No currency conversion is applied.</p>
+        <div class="panel-foot"><button type="submit" class="btn btn-primary btn-sm">Show results</button></div>
+      </div>
+    </details>
+
+    <details class="pill{{ ' active' if f.sponsorship }}">
+      <summary>Sponsorship{% if f.sponsorship %} <span class="pill-count"><span class="visually-hidden">(</span>{{ f.sponsorship|length }}<span class="visually-hidden"> selected)</span></span>{% endif %}</summary>
+      <div class="pill-panel">
+        <fieldset><legend>Visa sponsorship evidence</legend>
+          {% for k, v in opts.sponsorship.items() %}
+            <label class="check"><input type="checkbox" name="sponsorship" value="{{ k }}"{% if k in f.sponsorship %} checked{% endif %}> {{ v }} <span class="count">{{ facets.sponsorship.get(k, 0) }}</span></label>
+          {% endfor %}
+        </fieldset>
+        <div class="panel-foot"><button type="submit" class="btn btn-primary btn-sm">Show results</button></div>
+      </div>
+    </details>
+
+    <label class="pill-toggle{{ ' active' if f.visa_friendly }}"><input type="checkbox" name="visa_friendly" value="1" data-autosubmit{% if f.visa_friendly %} checked{% endif %}> Visa-friendly only</label>
+
+    {% set mnc_keys = f.mnc|reject('equalto', 'all')|list %}
+    {% if mnc_keys %}
+      {% for k in mnc_keys %}<input type="hidden" name="mnc" value="{{ k }}">{% endfor %}
+      <a class="pill-toggle active" href="/jobs?mnc=all">Top MNCs: {{ mnc_keys|join(', ') }} ✕</a>
+    {% else %}
+      <label class="pill-toggle{{ ' active' if 'all' in f.mnc }}"><input type="checkbox" name="mnc" value="all" data-autosubmit{% if 'all' in f.mnc %} checked{% endif %}> Top MNCs only</label>
+    {% endif %}
+
+    <details class="pill{{ ' active' if f.min_score }}">
+      <summary>{{ ('Match ≥ ' ~ f.min_score) if f.min_score else 'Match score' }}</summary>
+      <div class="pill-panel">
+        <div class="field">
+          <label for="min_score">Minimum match score</label>
+          <select id="min_score" name="min_score">
+            {% for v in [0, 40, 50, 60, 70, 80] %}<option value="{{ v }}"{% if f.min_score == v %} selected{% endif %}>{{ 'Any' if v == 0 else (v ~ '+') }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="panel-foot"><button type="submit" class="btn btn-primary btn-sm">Show results</button></div>
+      </div>
+    </details>
+
+    <details class="pill{{ ' active' if f.recommendation }}">
+      <summary>Recommendation{% if f.recommendation %} <span class="pill-count"><span class="visually-hidden">(</span>{{ f.recommendation|length }}<span class="visually-hidden"> selected)</span></span>{% endif %}</summary>
+      <div class="pill-panel">
+        <fieldset><legend>Agent recommendation</legend>
+          {% for k, v in opts.rec.items() %}
+            <label class="check"><input type="checkbox" name="rec" value="{{ k }}"{% if k in f.recommendation %} checked{% endif %}> {{ v }}</label>
+          {% endfor %}
+        </fieldset>
+        <div class="panel-foot"><button type="submit" class="btn btn-primary btn-sm">Show results</button></div>
+      </div>
+    </details>
+
+    <details class="pill{{ ' active' if f.status }}">
+      <summary>Application status{% if f.status %} <span class="pill-count"><span class="visually-hidden">(</span>{{ f.status|length }}<span class="visually-hidden"> selected)</span></span>{% endif %}</summary>
+      <div class="pill-panel">
+        <fieldset><legend>Application status</legend>
+          {% for k in opts.status %}
+            <label class="check"><input type="checkbox" name="status" value="{{ k }}"{% if k in f.status %} checked{% endif %}> {{ labels.get(k, k) }}{% if k == 'discovered' %} <span class="muted small">(not applied)</span>{% endif %}</label>
+          {% endfor %}
+        </fieldset>
+        <div class="panel-foot"><button type="submit" class="btn btn-primary btn-sm">Show results</button></div>
+      </div>
+    </details>
+
+    <label class="pill-toggle{{ ' active' if f.bookmarked }}"><input type="checkbox" name="bookmarked" value="1" data-autosubmit{% if f.bookmarked %} checked{% endif %}> Bookmarked only</label>
+    <label class="pill-toggle{{ ' active' if f.include_closed }}"><input type="checkbox" name="include_closed" value="1" data-autosubmit{% if f.include_closed %} checked{% endif %}> Include closed</label>
+
+    <span class="badge badge-outline filters-count">{{ m.ico('filter') }} All filters ({{ f.active_count() }})</span>
+    {% if f.active_count() or f.q or f.location %}<a href="/jobs" class="small">Reset</a>{% endif %}
+  </div>
+
+  <div class="results-head">
+    <p class="mb0 results-count" role="status"><strong>{{ total }}</strong> result{{ '' if total == 1 else 's' }}{% if f.q %} for “{{ f.q }}”{% endif %}</p>
+    <div class="field">
+      <label for="sort">Sort by</label>
+      <select id="sort" name="sort" data-autosubmit>
+        {% for k, v in opts.sort.items() %}<option value="{{ k }}"{% if f.sort == k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn btn-sm">Apply</button>
+    </div>
+  </div>
+</form>
+
+<form method="get" action="/jobs/compare" id="compare-form"></form>
+
+{% if not rows %}
+  <div class="card empty">
+    {% if f.active_count() or f.q or f.location %}
+      <strong>No jobs match these filters</strong>
+      Try removing a filter or <a href="/jobs">reset all filters</a>.
+    {% else %}
+      <strong>No jobs yet — run the agent from Agent Runs</strong>
+      <a class="btn btn-primary mt" href="/runs">Go to Agent Runs</a>
+    {% endif %}
+  </div>
+{% else %}
+<div class="compare-bar">
+  <span class="small muted" data-compare-count>Tick 2–4 jobs to compare</span>
+  <button type="submit" form="compare-form" class="btn btn-sm" data-compare-button>{{ m.ico('compare') }} Compare selected</button>
+</div>
+<div class="split">
+  <div>
+    <ul class="job-list" aria-label="Job results">
+      {% for r in rows %}
+        {% set is_sel = selected and selected.id == r.id %}
+        <li class="job-card{{ ' selected' if is_sel }}">
+          {{ m.mono(r.employer) }}
+          <div class="job-main">
+            <a class="job-title clamp2" href="/jobs?{{ qs_prefix }}{% if f.page > 1 %}page={{ f.page }}&amp;{% endif %}job={{ r.id }}"{% if is_sel %} aria-current="true"{% endif %}>{{ r.title }}</a>
+            <div class="job-emp truncate">{{ r.employer }}</div>
+            <div class="job-meta">{{ m.ico('pin') }}<span class="truncate">{{ m.location(r) }}</span></div>
+            <div class="job-meta">{{ m.ico('clock') }}<span>Posted {{ m.d(r.published_at or r.first_discovered_at) }}{% if r.salary_max %} · {{ m.salary(r) }}{% endif %}</span></div>
+            <div class="job-badges">
+              {{ m.remote_badge(r.remote_type) }}
+              {{ m.spon_badge(r.sponsorship, True) }}
+              {{ m.rec_badge(r.recommendation) }}
+              {% if r.app_status %}{{ m.status_badge(r.app_status) }}{% endif %}
+              {% if r.job_status != 'open' %}{{ m.job_status_badge(r.job_status) }}{% endif %}
+            </div>
+          </div>
+          <div class="job-side">
+            {{ m.score_circle(r.score) }}
+            {% if r.bookmarked %}<span class="bm" title="Bookmarked">{{ m.ico('star-fill') }}<span class="visually-hidden">Bookmarked</span></span>{% endif %}
+            <label class="compare"><input type="checkbox" name="id" value="{{ r.id }}" form="compare-form" data-compare> Compare</label>
+            <a class="mobile-open small" href="/jobs/{{ r.id }}">Open<span class="visually-hidden"> {{ r.title }}</span></a>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+
+    {% if pages > 1 %}
+    <nav aria-label="Pagination">
+      <ul class="pagination">
+        {% if f.page > 1 %}<li><a href="/jobs?{{ qs_prefix }}page={{ f.page - 1 }}">‹ Prev</a></li>{% endif %}
+        {% for p in range(1, pages + 1) %}
+          {% if p == 1 or p == pages or (p - f.page)|abs <= 2 %}
+            <li>{% if p == f.page %}<span aria-current="page">{{ p }}</span>{% else %}<a href="/jobs?{{ qs_prefix }}page={{ p }}">{{ p }}</a>{% endif %}</li>
+          {% elif (p - f.page)|abs == 3 %}
+            <li><span aria-hidden="true">…</span></li>
+          {% endif %}
+        {% endfor %}
+        {% if f.page < pages %}<li><a href="/jobs?{{ qs_prefix }}page={{ f.page + 1 }}">Next ›</a></li>{% endif %}
+      </ul>
+    </nav>
+    {% endif %}
+  </div>
+
+  <aside class="detail-pane card" aria-label="Selected job">
+    {% if selected %}
+      <div class="pane-top"><span class="small muted">Job details</span><a class="small" href="/jobs/{{ selected.id }}">Open in full page</a></div>
+      {{ m.job_detail(selected, back, "h2") }}
+    {% else %}
+      <div class="empty"><strong>Select a job</strong>Choose a job on the left to see the details and match breakdown.</div>
+    {% endif %}
+  </aside>
+</div>
+{% endif %}
+{% endblock %}

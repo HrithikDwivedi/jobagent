@@ -1,0 +1,414 @@
+{
+  "version": 1,
+  "_about": "Resume style conventions as DATA. Edit freely; the tailoring code reads these profiles and contains no country- or company-specific rules. Conventions are widely published guidance (recruiter/ATS norms), not copied from any individual's resume.",
+
+  "default_company_type": "big_tech",
+  "default_role_family": "dotnet_backend",
+
+  "company_types": {
+    "big_tech": {
+      "label": "Big tech / MNC",
+      "bullet_max_chars": 200,
+      "max_bullets_per_role": 5,
+      "max_bullets_per_project": 3,
+      "max_side_projects": 2,
+      "max_bullets_per_side_project": 2,
+      "emphasise_projects": true,
+      "skills_max_groups": 5,
+      "skills_max_items": 8,
+      "summary_sentences": 3,
+      "summary_max_chars": 430,
+      "metric_weight": 1.0,
+      "section_order": ["summary", "experience", "projects", "skills", "education", "achievements"],
+      "headings": {"projects": "Projects"},
+      "verbs": ["Built", "Delivered", "Reduced", "Improved", "Shipped", "Designed", "Automated", "Engineered", "Launched", "Scaled", "Optimised", "Migrated", "Integrated", "Led"],
+      "emphasis_patterns": ["\\d+\\s?%", "\\d+\\+?\\s+(?:users|hours|languages|modules|services)", "\\bperformance\\b", "\\bscal\\w+", "\\blatency\\b", "\\breal[- ]time\\b"],
+      "tone": "Impact-first, metric-led bullets in the XYZ pattern: 'Accomplished [X] as measured by [Y] by doing [Z]'. When the original bullet contains a metric, lead with the result and keep the exact number. When it has no metric, lead with the concrete thing built and its scope; never invent a metric. Concise (one to two lines), plain international English, no buzzwords or hype adjectives."
+    },
+    "enterprise": {
+      "label": "Enterprise / established company",
+      "bullet_max_chars": 220,
+      "max_bullets_per_role": 6,
+      "max_bullets_per_project": 4,
+      "max_side_projects": 2,
+      "max_bullets_per_side_project": 2,
+      "emphasise_projects": false,
+      "skills_max_groups": 6,
+      "skills_max_items": 10,
+      "summary_sentences": 3,
+      "summary_max_chars": 480,
+      "metric_weight": 0.6,
+      "section_order": ["summary", "skills", "experience", "projects", "education", "achievements"],
+      "headings": {"projects": "Projects"},
+      "verbs": ["Delivered", "Implemented", "Migrated", "Integrated", "Standardised", "Maintained", "Improved", "Designed", "Automated", "Secured", "Documented", "Collaborated", "Supported", "Developed"],
+      "emphasis_patterns": ["\\brbac\\b", "\\baccess control\\b", "\\bcomplian\\w+", "\\bmigrat\\w+", "\\benterprise\\b", "\\bworkflow\\w*", "\\bschema\\b", "\\breport\\w*", "\\bscal\\w+", "\\bstakeholder\\w*", "\\bbusiness analysts?\\b"],
+      "tone": "Emphasise stability, scale, domain understanding, process and governance: access control, compliance, data integrity, migrations, maintainability, documentation and cross-team collaboration. Measured, formal tone; quantify scale where the original gives a number."
+    },
+    "startup": {
+      "label": "Startup / scale-up",
+      "bullet_max_chars": 200,
+      "max_bullets_per_role": 5,
+      "max_bullets_per_project": 3,
+      "max_side_projects": 3,
+      "max_bullets_per_side_project": 3,
+      "emphasise_projects": true,
+      "skills_max_groups": 5,
+      "skills_max_items": 8,
+      "summary_sentences": 2,
+      "summary_max_chars": 380,
+      "metric_weight": 0.7,
+      "section_order": ["summary", "experience", "projects", "skills", "education", "achievements"],
+      "headings": {"projects": "Projects"},
+      "verbs": ["Built", "Shipped", "Launched", "Owned", "Created", "Automated", "Delivered", "Designed", "Prototyped", "Integrated", "Drove", "Scaled"],
+      "emphasis_patterns": ["\\bindependently\\b", "\\bend[- ]to[- ]end\\b", "\\bfrom scratch\\b", "\\bfull[- ]stack\\b", "\\bautomat\\w+", "\\bshipped\\b", "\\blaunch\\w*", "\\bstandalone\\b"],
+      "tone": "Emphasise ownership, speed and end-to-end delivery: what was built, shipped and owned across the stack, and how quickly. Direct, energetic but strictly factual; short bullets."
+    }
+  },
+
+  "company_detection": {
+    "_about": "Auto mode only. Known employers win; otherwise text signals are counted with weights. Nothing detected -> default_company_type.",
+    "known_employers": {
+      "big_tech": ["stripe", "datadog", "cloudflare", "gitlab", "mongodb", "elastic", "airbnb", "coinbase", "okta", "twilio", "figma", "asana", "databricks", "snowflake", "spotify", "palantir", "microsoft", "google", "alphabet", "amazon", "aws", "meta", "facebook", "apple", "netflix", "booking", "bookingcom", "adyen", "n26", "wise", "monzo", "deliveroo", "xero", "atlassian", "shopify", "intercom", "dropbox", "squarespace", "toast", "celonis", "zalando", "uber", "linkedin", "salesforce", "oracle", "ibm", "sap", "nvidia", "intel", "adobe", "paypal", "ebay", "workday", "servicenow", "hubspot", "canva", "rakuten", "mercari", "careem", "notion", "miro", "1password", "elevenlabs", "synthesia", "cohere", "openai", "anthropic"],
+      "enterprise": ["accenture", "deloitte", "pwc", "kpmg", "ey", "capgemini", "infosys", "tcs", "tata consultancy services", "wipro", "hcl", "cognizant", "siemens", "bosch", "allianz", "axa", "hsbc", "barclays", "lloyds", "jpmorgan", "jp morgan", "goldman sachs", "morgan stanley", "citi", "citigroup", "deutsche bank", "ing", "abn amro", "bnp paribas", "santander", "ericsson", "nokia", "vodafone", "bt", "unilever", "philips", "shell", "bp", "emirates", "etisalat", "fujitsu", "nec", "hitachi", "telstra", "commonwealth bank", "rbc", "td bank"],
+      "startup": []
+    },
+    "signals": {
+      "big_tech": [
+        {"pattern": "fortune\\s*(?:500|100)", "weight": 2},
+        {"pattern": "\\b\\d{1,3}(?:,\\d{3})+\\+?\\s+employees", "weight": 2},
+        {"pattern": "\\b\\d{2,3}k\\+?\\s+employees", "weight": 2},
+        {"pattern": "offices in (?:over |more than )?\\d+\\s+countries", "weight": 2},
+        {"pattern": "\\b(?:millions|billions) of (?:users|customers|requests|transactions)", "weight": 2},
+        {"pattern": "\\b(?:nyse|nasdaq|publicly traded|listed company)\\b", "weight": 1.5},
+        {"pattern": "\\bglobal (?:leader|company|scale|presence|team)\\b", "weight": 1},
+        {"pattern": "\\bglobal\\b", "weight": 0.5},
+        {"pattern": "\\bat scale\\b|\\bhyper-?scale\\b", "weight": 1}
+      ],
+      "enterprise": [
+        {"pattern": "\\b(?:bank|banking|insurance|insurer|financial services|asset management)\\b", "weight": 1.5},
+        {"pattern": "\\b(?:regulated|regulatory|compliance|sox|iso 27001|pci[- ]dss|gdpr)\\b", "weight": 1},
+        {"pattern": "\\b(?:public sector|government|ministry|healthcare|pharma\\w*|telecom\\w*)\\b", "weight": 1.5},
+        {"pattern": "\\b(?:consultancy|consulting firm|system integrator|itil|erp|sap)\\b", "weight": 1},
+        {"pattern": "\\b(?:established in|founded in) (?:1[89]\\d\\d)\\b", "weight": 1.5},
+        {"pattern": "\\bfortune\\s*500\\b", "weight": 0.5}
+      ],
+      "startup": [
+        {"pattern": "\\bpre-?seed\\b|\\bseed[- ](?:stage|round|funded)\\b|\\bseed\\b", "weight": 2},
+        {"pattern": "\\bseries [a-c]\\b", "weight": 2},
+        {"pattern": "\\bearly[- ]stage\\b", "weight": 2},
+        {"pattern": "\\bfounding (?:engineer|team|member)\\b", "weight": 2.5},
+        {"pattern": "\\by ?combinator\\b|\\byc[- ]backed\\b|\\bventure[- ]backed\\b|\\bvc[- ]backed\\b", "weight": 1.5},
+        {"pattern": "\\bstart-?up\\b|\\bscale-?up\\b", "weight": 1},
+        {"pattern": "\\bfirst \\d+ engineers\\b|\\bsmall team\\b|\\bwear many hats\\b", "weight": 1},
+        {"pattern": "\\bequity\\b|\\bstock options\\b", "weight": 0.5}
+      ]
+    }
+  },
+
+  "headings": {
+    "summary": "Summary",
+    "skills": "Technical Skills",
+    "experience": "Experience",
+    "projects": "Projects",
+    "education": "Education",
+    "achievements": "Awards & Recognition",
+    "certifications": "Certifications & Awards"
+  },
+
+  "header_phrases": {
+    "nationality": "{nationality} national",
+    "sponsorship": "Requires visa sponsorship",
+    "sponsorship_outside": "Requires visa sponsorship outside {home}",
+    "authorised": "Authorised to work in {country}",
+    "relocation_to": "Open to relocation to {country}",
+    "relocation": "Open to relocation",
+    "availability": "Immediately available"
+  },
+
+  "countries": {
+    "default": {
+      "spelling": "uk",
+      "date_format": "mon_yyyy",
+      "page_size": "A4",
+      "doc_title": "CV",
+      "header": {"nationality": false, "work_authorization": true, "relocation": true, "availability": true},
+      "headings": {},
+      "never_include": ["photo", "date_of_birth", "marital_status", "religion", "full_address"],
+      "notes": "Generic international English CV: one column, no photo, no date of birth, no marital status."
+    },
+    "_europe": {
+      "inherits": "default",
+      "header": {"nationality": true},
+      "headings": {"summary": "Profile", "experience": "Work Experience"},
+      "notes": "European employers commonly expect nationality and work-permit status for non-EU applicants. Photos and dates of birth appear on some local CVs but are deliberately omitted (anti-discrimination law, ATS parsing)."
+    },
+    "GB": {"inherits": "_europe", "doc_title": "CV", "notes": "UK CV: right-to-work / visa status stated plainly; no photo or date of birth (Equality Act norms)."},
+    "IE": {"inherits": "_europe", "doc_title": "CV", "notes": "Irish CV: Critical Skills / General Employment Permit context - state sponsorship need plainly; no photo or date of birth."},
+    "DE": {"inherits": "_europe", "date_format": "mm_yyyy", "notes": "English-language CV for English postings. German Lebenslauf conventions (photo, birth date, signature) are not applied; German-language postings expect a German CV."},
+    "AT": {"inherits": "_europe", "date_format": "mm_yyyy", "notes": "As Germany: English CV; photo/birth date omitted."},
+    "CH": {"inherits": "_europe", "date_format": "mm_yyyy", "notes": "Swiss employers value permit status; non-EU hiring is quota-limited - state sponsorship need plainly."},
+    "NL": {"inherits": "_europe", "notes": "Highly-skilled-migrant (kennismigrant) route requires a recognised sponsor; state sponsorship need."},
+    "SE": {"inherits": "_europe", "notes": "Swedish CVs are concise and factual; English is widely accepted in tech."},
+    "DK": {"inherits": "_europe", "notes": "Danish CVs favour brevity and concrete results."},
+    "FI": {"inherits": "_europe", "notes": "Finnish CVs are concise; English common in tech."},
+    "BE": {"inherits": "_europe", "notes": "Belgium: English CV acceptable in tech; language skills often matter."},
+    "LU": {"inherits": "_europe", "notes": "Luxembourg: multilingual market; English CV acceptable in tech."},
+    "FR": {"inherits": "_europe", "notes": "France: English CV for international roles; French CV expected for French postings."},
+    "ES": {"inherits": "_europe", "notes": "Spain: English CV for international roles."},
+    "PT": {"inherits": "_europe", "notes": "Portugal: English CV common in tech hubs (Lisbon, Porto)."},
+    "IT": {"inherits": "_europe", "notes": "Italy: English CV for international roles; GDPR consent line not added (not needed for ATS submissions)."},
+    "PL": {"inherits": "_europe", "notes": "Poland: English CV common in tech; GDPR consent clause sometimes requested by the employer."},
+    "CZ": {"inherits": "_europe", "notes": "Czechia: English CV common in tech."},
+    "EE": {"inherits": "_europe", "notes": "Estonia: English is the default working language in tech."},
+    "NO": {"inherits": "_europe"},
+    "LT": {"inherits": "_europe"},
+    "LV": {"inherits": "_europe"},
+    "RO": {"inherits": "_europe"},
+    "GR": {"inherits": "_europe"},
+    "HU": {"inherits": "_europe"},
+    "MT": {"inherits": "_europe"},
+    "CY": {"inherits": "_europe"},
+    "US": {
+      "inherits": "default", "spelling": "us", "page_size": "Letter", "doc_title": "Resume",
+      "header": {"nationality": false},
+      "headings": {"summary": "Summary", "experience": "Professional Experience"},
+      "notes": "US resume: Letter size, US spelling, one page under ~10 years' experience; never photo, age, nationality or marital status. Work-authorization/sponsorship line kept because it is an application screening question."
+    },
+    "CA": {
+      "inherits": "default", "spelling": "us", "page_size": "Letter", "doc_title": "Resume",
+      "header": {"nationality": false},
+      "headings": {"summary": "Summary", "experience": "Professional Experience"},
+      "notes": "Canadian resume: Letter size; no photo/age/nationality (human-rights norms). -ize spelling is standard in Canadian English."
+    },
+    "AU": {
+      "inherits": "default", "doc_title": "Resume",
+      "header": {"nationality": false},
+      "headings": {"summary": "Professional Summary", "experience": "Work Experience"},
+      "notes": "Australian resume: A4, UK spelling; state work rights (visa sponsorship) clearly; no photo or date of birth."
+    },
+    "AE": {
+      "inherits": "default", "doc_title": "CV",
+      "header": {"nationality": true},
+      "headings": {"summary": "Profile", "experience": "Work Experience"},
+      "notes": "UAE CV: nationality and visa status are customary. Local CVs often show photo and date of birth; omitted here for ATS and privacy."
+    },
+    "JP": {
+      "inherits": "default", "spelling": "us", "doc_title": "CV",
+      "header": {"nationality": true},
+      "headings": {"summary": "Summary", "experience": "Work Experience"},
+      "notes": "English-language CV for international employers in Japan. Japanese rirekisho / shokumu-keirekisho formats are not generated; nationality and visa need are customary."
+    },
+    "SG": {
+      "inherits": "default", "doc_title": "Resume",
+      "header": {"nationality": true},
+      "headings": {"summary": "Summary", "experience": "Work Experience"},
+      "notes": "Singapore: Employment Pass context; nationality customary."
+    },
+    "IN": {
+      "inherits": "default", "doc_title": "Resume",
+      "header": {"nationality": false, "work_authorization": false},
+      "headings": {"summary": "Professional Summary", "experience": "Professional Experience"},
+      "notes": "India: citizen, no work-authorization line needed."
+    }
+  },
+
+  "role_families": {
+    "dotnet_backend": {
+      "label": ".NET / C# Backend",
+      "headline": "Software Engineer (.NET / C#)",
+      "title_patterns": ["\\.net\\b", "\\bc#", "\\bcsharp\\b", "\\bdotnet\\b", "asp\\.net"],
+      "priority": ["C#", ".NET", "ASP.NET Core", "Web API", "ASP.NET MVC", "Entity Framework", "LINQ", "SQL", "MySQL", "SQL Server", "REST APIs", "Microservices", "CQRS", "Azure", "AWS", "Docker", "CI/CD", "Unit Testing", "Design Patterns"],
+      "keywords": ["api", "apis", "backend", "service", "services", "database", "schema", "queries", "modules", "pipeline", "migrated", "enterprise"]
+    },
+    "python_backend": {
+      "label": "Python Backend",
+      "headline": "Software Engineer (Python / Backend)",
+      "title_patterns": ["\\bpython\\b", "\\bdjango\\b", "\\bfastapi\\b", "\\bflask\\b"],
+      "priority": ["Python", "FastAPI", "Django", "Flask", "REST APIs", "SQL", "PostgreSQL", "MySQL", "Docker", "AWS", "CI/CD", "LLMs", "Unit Testing"],
+      "keywords": ["api", "apis", "backend", "pipeline", "batch", "automating", "automated", "service", "database"]
+    },
+    "fullstack": {
+      "label": "Full Stack",
+      "headline": "Full-Stack Software Engineer",
+      "title_patterns": ["full[- ]?stack"],
+      "priority": ["C#", "ASP.NET Core", "JavaScript", "TypeScript", "React", "HTML", "CSS", "Web API", "REST APIs", "SQL", "MySQL", "Python", "FastAPI"],
+      "keywords": ["ui", "frontend", "interface", "dashboard", "dashboards", "responsive", "navigation", "full-stack", "api", "backend"]
+    },
+    "ai_application": {
+      "label": "AI Application Engineering",
+      "headline": "Software Engineer (AI Applications)",
+      "title_patterns": ["\\bai\\b", "\\bml\\b", "\\bllm", "machine learning", "\\bgen ?ai\\b", "generative", "applied ai", "\\bnlp\\b"],
+      "priority": ["LLMs", "RAG", "Prompt Engineering", "Vector Databases", "LangChain", "Speech AI", "Python", "FastAPI", "REST APIs", "Machine Learning", "C#", "ASP.NET Core", "SQL"],
+      "keywords": ["ai", "gpt", "chatbot", "llm", "generation", "generative", "transcribe", "retrieval", "prompts", "model", "voice", "automating"]
+    },
+    "integration": {
+      "label": "Application / Integration Engineering",
+      "headline": "Application & Integration Engineer",
+      "title_patterns": ["integration", "application engineer", "solutions engineer", "implementation engineer"],
+      "priority": ["REST APIs", "Web API", "Integrations", "OAuth", "Swagger/OpenAPI", "C#", ".NET", "SQL", "Python", "Firebase", "AWS", "Azure"],
+      "keywords": ["integrated", "integration", "pipeline", "api", "apis", "workflow", "automated", "email", "notifications", "third-party"]
+    }
+  },
+
+  "wording": {
+    "summary_drop_patterns": ["\\bseeking\\b", "\\blooking for\\b", "anywhere in india", "\\bopen to (?:roles|opportunities)\\b"],
+    "replacements": [
+      {"pattern": "Claude AI-assisted\\s*\\(\\s*[\"“]?vibe[- ]coding[\"”]?\\s*\\)\\s*development", "replacement": "AI-assisted development (Claude)", "reason": "Replaced informal 'vibe coding' with neutral wording; the fact (AI-assisted development with Claude) is kept."},
+      {"pattern": "\\s*\\(\\s*[\"“]?vibe[- ]coding[\"”]?\\s*\\)", "replacement": "", "reason": "Removed informal 'vibe coding' aside."},
+      {"pattern": "[\"“]?\\bvibe[- ]coding\\b[\"”]?", "replacement": "AI-assisted development", "reason": "Replaced informal 'vibe coding' with neutral wording."}
+    ],
+    "fillers": ["\\bdynamically\\s+", "\\bmeasurably\\s+", "\\bsuccessfully\\s+", "\\beffectively\\s+", "\\bseamlessly\\s+", "\\bdirectly\\s+(?=from\\b)", "\\bvarious\\s+", "\\bdedicated\\s+"],
+    "max_novel_words": 2,
+    "weak_skill_evidence": ["scalable", "scalability", "api", "apis", "pipeline", "pipelines", "reporting", "dashboard", "dashboards", "integration", "integrations", "containers", "container", "indexing"],
+    "neutral_words": ["within", "over", "than", "each", "every", "into", "through", "while", "which"],
+    "clause_starts": ["enabling", "ensuring", "allowing", "using", "leveraging", "resulting", "triggering", "including", "through", "via", "while"],
+    "verb_synonyms": {
+      "implemented": ["Built", "Developed", "Delivered"],
+      "developed": ["Built", "Engineered"],
+      "built": ["Developed", "Engineered"],
+      "created": ["Built", "Developed"],
+      "delivered": ["Shipped", "Built"],
+      "enhanced": ["Improved", "Extended"],
+      "improved": ["Enhanced"],
+      "designed": ["Architected"],
+      "integrated": ["Connected"],
+      "engineered": ["Built"]
+    },
+    "past_tense_irregular": ["Built", "Led", "Ran", "Won", "Drove", "Grew", "Cut", "Made", "Wrote", "Set", "Took", "Brought", "Sped", "Rebuilt", "Overhauled", "Owned", "Shipped", "Spearheaded", "Oversaw", "Taught", "Kept", "Held", "Put", "Sold"]
+  },
+
+  "spelling": {
+    "_about": "UK -> US word pairs. Applied with word boundaries and case preservation in the direction the target needs.",
+    "pairs": [
+      ["optimise", "optimize"], ["optimised", "optimized"], ["optimises", "optimizes"], ["optimising", "optimizing"],
+      ["optimisation", "optimization"], ["optimisations", "optimizations"],
+      ["organise", "organize"], ["organised", "organized"], ["organising", "organizing"], ["organisation", "organization"], ["organisations", "organizations"], ["organisational", "organizational"],
+      ["recognise", "recognize"], ["recognised", "recognized"],
+      ["standardise", "standardize"], ["standardised", "standardized"], ["standardising", "standardizing"], ["standardisation", "standardization"],
+      ["utilise", "utilize"], ["utilised", "utilized"], ["utilising", "utilizing"], ["utilisation", "utilization"],
+      ["prioritise", "prioritize"], ["prioritised", "prioritized"], ["prioritising", "prioritizing"], ["prioritisation", "prioritization"],
+      ["customise", "customize"], ["customised", "customized"], ["customisation", "customization"],
+      ["modernise", "modernize"], ["modernised", "modernized"], ["modernisation", "modernization"],
+      ["finalise", "finalize"], ["finalised", "finalized"],
+      ["authorise", "authorize"], ["authorised", "authorized"], ["authorisation", "authorization"],
+      ["visualise", "visualize"], ["visualised", "visualized"], ["visualisation", "visualization"], ["visualisations", "visualizations"],
+      ["minimise", "minimize"], ["minimised", "minimized"], ["minimising", "minimizing"],
+      ["maximise", "maximize"], ["maximised", "maximized"], ["maximising", "maximizing"],
+      ["summarise", "summarize"], ["summarised", "summarized"],
+      ["synchronise", "synchronize"], ["synchronised", "synchronized"], ["synchronisation", "synchronization"],
+      ["containerise", "containerize"], ["containerised", "containerized"], ["containerisation", "containerization"],
+      ["centralise", "centralize"], ["centralised", "centralized"],
+      ["normalise", "normalize"], ["normalised", "normalized"], ["normalisation", "normalization"],
+      ["initialise", "initialize"], ["initialised", "initialized"],
+      ["serialise", "serialize"], ["serialised", "serialized"], ["serialisation", "serialization"],
+      ["personalise", "personalize"], ["personalised", "personalized"], ["personalisation", "personalization"],
+      ["digitise", "digitize"], ["digitised", "digitized"], ["digitisation", "digitization"],
+      ["emphasise", "emphasize"], ["emphasised", "emphasized"],
+      ["categorise", "categorize"], ["categorised", "categorized"],
+      ["analyse", "analyze"], ["analysed", "analyzed"], ["analysing", "analyzing"],
+      ["behaviour", "behavior"], ["behaviours", "behaviors"], ["behavioural", "behavioral"],
+      ["colour", "color"], ["colours", "colors"], ["favour", "favor"], ["honour", "honor"], ["honours", "honors"], ["labour", "labor"],
+      ["centre", "center"], ["centres", "centers"],
+      ["enrolment", "enrollment"], ["enrolments", "enrollments"],
+      ["modelling", "modeling"], ["modelled", "modeled"], ["labelled", "labeled"], ["labelling", "labeling"],
+      ["travelling", "traveling"], ["cancelled", "canceled"],
+      ["fulfil", "fulfill"], ["fulfilment", "fulfillment"],
+      ["defence", "defense"]
+    ]
+  },
+
+  "sectors": {
+    "_about": "Sector defaults layered on top of a company type when an employer matches a company profile. keyword_boosts only ORDER existing content; they never add skills.",
+    "big_tech": {"company_type": "big_tech", "keyword_boosts": ["System Design", "Distributed Systems", "scale", "performance", "users", "latency"], "emphasis_patterns": ["\\bscal\\w+", "\\bmillions?\\b", "\\bperformance\\b"], "focus": "Scale, measurable impact, clean engineering, data structures/system design fundamentals."},
+    "product": {"company_type": "big_tech", "keyword_boosts": ["users", "customer", "product", "shipped", "engagement"], "emphasis_patterns": ["\\busers?\\b", "\\bengagement\\b", "\\bcustomers?\\b"], "focus": "Customer impact, product ownership, shipping iteratively."},
+    "investment_bank": {"company_type": "enterprise", "keyword_boosts": ["C#", ".NET", "Java", "SQL", "SQL Server", "Unit Testing", "RBAC", "secure", "security", "reliability", "reliable", "data", "integrity", "validated", "audit", "controls", "compliance", "risk", "access"], "emphasis_patterns": ["\\brbac\\b|role-based", "\\bsecur\\w+|\\bsafe\\b", "\\bvalidat\\w+", "\\bread-only\\b", "\\baccess\\b", "\\bdata\\b", "\\breliab\\w+"], "section_order": ["summary", "skills", "experience", "projects", "education", "achievements"], "focus": "Secure, reliable, auditable enterprise software; data integrity, access control, risk & compliance awareness, SQL depth."},
+    "consulting": {"company_type": "enterprise", "keyword_boosts": ["Agile", "client", "stakeholder", "stakeholders", "business", "delivery", "delivered", "Azure", "AWS", "migration", "migrated", "workflow", "analysts", "collaboration"], "emphasis_patterns": ["\\bbusiness\\b", "\\bclient\\w*\\b", "\\bmigrat\\w+", "\\bdeliver\\w*", "\\bworkflow\\w*", "\\bcollaborat\\w+"], "section_order": ["summary", "skills", "experience", "projects", "education", "achievements"], "focus": "Client-facing delivery, stakeholder collaboration, Agile/Scrum, breadth across projects and domains, cloud and digital transformation, recognitions."},
+    "it_services": {"company_type": "enterprise", "keyword_boosts": ["Agile", "client", "delivery", "delivered", ".NET", "C#", "Java", "SQL", "Azure", "AWS", "support", "migration", "projects"], "emphasis_patterns": ["\\bclient\\w*\\b", "\\bdeliver\\w*", "\\bmigrat\\w+", "\\bsupport\\b", "\\bmodules?\\b"], "section_order": ["summary", "skills", "experience", "projects", "education", "achievements"], "focus": "Delivery across multiple client projects, mainstream enterprise stacks, Agile process, reliability, certifications and awards."}
+  },
+
+  "company_profiles": {
+    "_about": "Publicly stated values/competencies used ONLY to steer tone and ordering of existing facts. They are never inserted into the resume as claims.",
+    "google": {"name": "Google", "aliases": ["google", "alphabet", "google llc", "google cloud", "deepmind", "youtube"], "sector": "big_tech", "values": ["Googleyness", "General cognitive ability", "Role-related knowledge", "Leadership", "Impact at scale"], "bullet_style": "XYZ formula: 'Accomplished X as measured by Y by doing Z'; quantified impact; concise.", "emphasis": ["data structures and algorithms", "system design", "scale", "measurable impact"], "keyword_boosts": ["System Design", "Python", "Distributed Systems", "scale", "performance", "users", "latency", "algorithm"], "summary_angle": "Engineer who ships measurable, scalable impact with strong fundamentals.", "section_order": ["summary", "experience", "projects", "skills", "education", "achievements"]},
+    "amazon": {"name": "Amazon", "aliases": ["amazon", "aws", "amazon web services", "amazon development centre", "amazon development center"], "sector": "big_tech", "values": ["Customer Obsession", "Ownership", "Invent and Simplify", "Dive Deep", "Bias for Action", "Deliver Results", "Insist on the Highest Standards", "Earn Trust"], "bullet_style": "Ownership + metrics: what you owned, the customer problem, the measurable result.", "emphasis": ["ownership", "customer impact", "metrics", "operational excellence"], "keyword_boosts": ["AWS", "customer", "users", "owned", "automated", "reduced", "eliminated", "Java", "Python"], "summary_angle": "Owner mindset; customer-focused engineer who delivers measurable results.", "section_order": ["summary", "experience", "projects", "skills", "education", "achievements"]},
+    "microsoft": {"name": "Microsoft", "aliases": ["microsoft", "microsoft corporation", "linkedin", "github"], "sector": "big_tech", "values": ["Growth mindset", "Respect", "Integrity", "Accountability", "Customer obsessed", "One Microsoft"], "bullet_style": "Impact-focused, collaborative, customer outcome first.", "emphasis": ["C#/.NET and Azure depth", "collaboration", "customer impact"], "keyword_boosts": ["C#", ".NET", "ASP.NET Core", "Azure", "Entity Framework", "SQL Server", "customer"], "summary_angle": "C#/.NET engineer with a growth mindset delivering customer impact."},
+    "atlassian": {"name": "Atlassian", "aliases": ["atlassian", "atlassian corporation", "trello", "loom"], "sector": "product", "values": ["Open company, no bullshit", "Build with heart and balance", "Don't #@!% the customer", "Play, as a team", "Be the change you seek"], "bullet_style": "Customer and teamwork focused; concrete outcomes; plain language.", "emphasis": ["customer impact", "teamwork", "quality", "product thinking"], "keyword_boosts": ["Java", "React", "TypeScript", "users", "customer", "feedback", "team", "collaboration"], "summary_angle": "Customer-focused engineer who builds quality product features as part of a team.", "section_order": ["summary", "experience", "projects", "skills", "education", "achievements"]},
+    "oracle": {"name": "Oracle", "aliases": ["oracle", "oracle corporation", "oracle cloud", "oci"], "sector": "big_tech", "values": ["Integrity", "Customer satisfaction", "Innovation", "Teamwork"], "bullet_style": "Metric-led, database and cloud depth.", "emphasis": ["databases", "SQL", "cloud", "performance"], "keyword_boosts": ["SQL", "Database Design", "Query Optimisation", "Java", "performance"], "summary_angle": "Engineer with strong database/SQL foundations building performant applications."},
+    "sap": {"name": "SAP", "aliases": ["sap", "sap se", "sap labs"], "sector": "product", "values": ["Tell it like it is", "Stay curious", "Build bridges, not silos", "Run simple", "Keep promises"], "bullet_style": "Enterprise product outcomes, clear and simple.", "emphasis": ["enterprise applications", "integration", "business processes"], "keyword_boosts": ["Integrations", "REST APIs", "SQL", "business", "enterprise", "workflow"], "summary_angle": "Engineer building enterprise business applications and integrations."},
+    "salesforce": {"name": "Salesforce", "aliases": ["salesforce", "salesforce.com", "slack", "tableau", "mulesoft"], "sector": "product", "values": ["Trust", "Customer Success", "Innovation", "Equality", "Sustainability"], "bullet_style": "Customer success and trust; secure, reliable features.", "emphasis": ["CRM", "customer success", "security", "integrations"], "keyword_boosts": ["CRM", "Integrations", "REST APIs", "customer", "users", "secure"], "summary_angle": "Engineer delivering trusted, customer-centric business applications."},
+    "cisco": {"name": "Cisco", "aliases": ["cisco", "cisco systems", "webex"], "sector": "big_tech", "values": ["Customer focus", "Innovation", "Inclusion", "Trust"], "bullet_style": "Reliability and scale, metric-led.", "emphasis": ["networking-aware software", "reliability", "security"], "keyword_boosts": ["Python", "REST APIs", "Linux", "security", "reliability"], "summary_angle": "Engineer building reliable, secure software."},
+    "adobe": {"name": "Adobe", "aliases": ["adobe", "adobe systems", "adobe inc"], "sector": "product", "values": ["Genuine", "Exceptional", "Innovative", "Involved"], "bullet_style": "User experience and quality, metric-led.", "emphasis": ["user experience", "quality", "innovation"], "keyword_boosts": ["JavaScript", "TypeScript", "React", "users", "engagement", "UI"], "summary_angle": "Engineer delivering exceptional, user-centred product features."},
+    "ibm": {"name": "IBM", "aliases": ["ibm", "international business machines", "ibm india", "red hat"], "sector": "it_services", "company_type": "enterprise", "values": ["Dedication to every client's success", "Innovation that matters, for our company and for the world", "Trust and personal responsibility in all relationships"], "bullet_style": "Client success and innovation; enterprise, hybrid cloud and AI relevance.", "emphasis": ["hybrid cloud", "AI", "client delivery", "enterprise integration"], "keyword_boosts": ["AI", "LLMs", "Azure", "AWS", "Docker", "Java", "Python", "client", "enterprise", "Integrations"], "summary_angle": "Engineer applying AI and cloud to enterprise client problems."},
+    "morgan_stanley": {"name": "Morgan Stanley", "aliases": ["morgan stanley", "morgan stanley advantage services", "morgan stanley services"], "sector": "investment_bank", "values": ["Do the right thing", "Put clients first", "Lead with exceptional ideas", "Commit to diversity and inclusion", "Give back"], "bullet_style": "Precise, controls-aware: secure, reliable systems; data integrity; measurable improvements.", "emphasis": ["Java/.NET enterprise systems", "SQL and data integrity", "security and access control", "reliability"], "keyword_boosts": ["Java", "C#", ".NET", "SQL", "RBAC", "secure", "data", "validated", "access", "reliability"], "summary_angle": "Engineer building secure, reliable, data-accurate enterprise systems."},
+    "goldman_sachs": {"name": "Goldman Sachs", "aliases": ["goldman sachs", "goldman", "gs"], "sector": "investment_bank", "values": ["Client Service", "Partnership", "Integrity", "Excellence"], "bullet_style": "Rigorous, quantified, risk-aware.", "emphasis": ["Java", "low-latency and reliable systems", "data", "controls"], "keyword_boosts": ["Java", "Python", "SQL", "data", "secure", "reliability", "performance"], "summary_angle": "Rigorous engineer building reliable, data-driven systems."},
+    "jpmorgan": {"name": "JPMorgan Chase", "aliases": ["jpmorgan", "jp morgan", "jpmorgan chase", "jpmorgan chase & co", "jpmc", "chase"], "sector": "investment_bank", "values": ["Service", "Heart", "Curiosity", "Courage", "Excellence"], "bullet_style": "Controls-aware delivery, reliability, measurable improvement.", "emphasis": ["Java/Python/.NET", "cloud", "security", "data integrity"], "keyword_boosts": ["Java", "Python", "C#", "SQL", "AWS", "secure", "RBAC", "data"], "summary_angle": "Engineer delivering secure, reliable financial-grade software."},
+    "barclays": {"name": "Barclays", "aliases": ["barclays", "barclays bank", "barclays global service centre", "barclays technology"], "sector": "investment_bank", "values": ["Respect", "Integrity", "Service", "Excellence", "Stewardship", "Empower", "Challenge", "Drive"], "bullet_style": "Controls, resilience and customer outcomes; precise and measured.", "emphasis": ["secure and resilient systems", "risk and controls awareness", ".NET/Java and SQL", "Agile delivery"], "keyword_boosts": ["C#", ".NET", "Java", "SQL", "RBAC", "secure", "validated", "access", "Agile", "data"], "summary_angle": "Engineer building secure, resilient, well-controlled business systems."},
+    "citi": {"name": "Citi", "aliases": ["citi", "citigroup", "citibank", "citicorp"], "sector": "investment_bank", "values": ["Integrity", "Client focus", "Excellence", "Risk and controls"], "bullet_style": "Controls-aware, reliable delivery.", "emphasis": ["Java/.NET", "SQL", "controls", "reliability"], "keyword_boosts": ["Java", "C#", ".NET", "SQL", "secure", "data", "RBAC"], "summary_angle": "Engineer building reliable, well-controlled systems."},
+    "hsbc": {"name": "HSBC", "aliases": ["hsbc", "hsbc technology", "hsbc bank"], "sector": "investment_bank", "values": ["We value difference", "We succeed together", "We take responsibility", "We get it done"], "bullet_style": "Responsible, collaborative, outcome-focused.", "emphasis": ["secure systems", "data", "collaboration"], "keyword_boosts": ["Java", "C#", "SQL", "secure", "data", "RBAC", "Agile"], "summary_angle": "Collaborative engineer delivering secure, reliable systems."},
+    "deutsche_bank": {"name": "Deutsche Bank", "aliases": ["deutsche bank", "db", "deutsche bank group"], "sector": "investment_bank", "values": ["Integrity", "Sustainable performance", "Client centricity", "Innovation", "Discipline", "Partnership"], "bullet_style": "Disciplined, controls-aware, measurable.", "emphasis": ["Java", "SQL", "controls", "data integrity"], "keyword_boosts": ["Java", "SQL", "secure", "data", "validated", "RBAC"], "summary_angle": "Disciplined engineer focused on reliable, auditable systems."},
+    "ubs": {"name": "UBS", "aliases": ["ubs", "ubs ag", "credit suisse"], "sector": "investment_bank", "values": ["Accountability with integrity", "Collaboration", "Innovation"], "bullet_style": "Accountable, precise, quantified.", "emphasis": ["Java/.NET", "data", "controls"], "keyword_boosts": ["Java", "C#", "SQL", "data", "secure", "RBAC"], "summary_angle": "Accountable engineer building reliable data-driven systems."},
+    "visa": {"name": "Visa", "aliases": ["visa", "visa inc"], "sector": "investment_bank", "company_type": "big_tech", "values": ["Lead by example", "Act with integrity", "Collaborate as one Visa", "Execute with excellence"], "bullet_style": "Scale, security and reliability; metric-led.", "emphasis": ["payments-grade reliability", "security", "scale"], "keyword_boosts": ["Java", "SQL", "secure", "reliability", "performance", "scale"], "summary_angle": "Engineer building secure, reliable, scalable systems."},
+    "mastercard": {"name": "Mastercard", "aliases": ["mastercard", "mastercard inc"], "sector": "investment_bank", "company_type": "big_tech", "values": ["Decency Quotient", "Inclusion", "Integrity", "Innovation"], "bullet_style": "Secure, reliable, scalable; metric-led.", "emphasis": ["security", "reliability", "APIs"], "keyword_boosts": ["Java", "REST APIs", "SQL", "secure", "reliability"], "summary_angle": "Engineer building secure, reliable API-driven systems."},
+    "deloitte": {"name": "Deloitte", "aliases": ["deloitte", "deloitte consulting", "deloitte usi", "deloitte touche tohmatsu", "deloitte digital"], "sector": "consulting", "values": ["Lead the way", "Serve with integrity", "Take care of each other", "Foster inclusion", "Collaborate for measurable impact"], "bullet_style": "Client-impact framing: business problem, delivery, measurable outcome; collaboration with stakeholders.", "emphasis": ["client delivery", "stakeholder collaboration", "Agile delivery", "cloud and digital transformation"], "keyword_boosts": ["Agile", "business", "analysts", "collaboration", "Azure", "AWS", "migration", "workflow", "client", "delivery"], "summary_angle": "Delivery-focused engineer who turns business needs into working software with stakeholders."},
+    "kpmg": {"name": "KPMG", "aliases": ["kpmg", "kpmg global services", "kpmg india"], "sector": "consulting", "values": ["Integrity", "Excellence", "Courage", "Together", "For Better"], "bullet_style": "Business outcome and quality, controls-aware, collaborative.", "emphasis": ["client delivery", "data and reporting", "risk awareness", "Agile"], "keyword_boosts": ["Agile", "Reporting/Dashboards", "SQL", "business", "data", "RBAC", "collaboration", "delivery"], "summary_angle": "Engineer delivering reliable, data-driven business solutions with integrity."},
+    "ey": {"name": "EY", "aliases": ["ey", "ernst & young", "ernst and young", "ey gds", "ey global delivery services"], "sector": "consulting", "values": ["Integrity", "Respect", "Teaming", "Energy", "Enthusiasm", "Courage"], "bullet_style": "Client outcome, teaming and quality.", "emphasis": ["client delivery", "teamwork", "data", "cloud"], "keyword_boosts": ["Agile", "business", "collaboration", "Azure", "data", "delivery"], "summary_angle": "Team-oriented engineer delivering client outcomes."},
+    "pwc": {"name": "PwC", "aliases": ["pwc", "pricewaterhousecoopers", "pwc india", "pwc acceleration centers"], "sector": "consulting", "values": ["Act with integrity", "Make a difference", "Care", "Work together", "Reimagine the possible"], "bullet_style": "Client impact, collaboration, measurable outcome.", "emphasis": ["client delivery", "digital transformation", "collaboration"], "keyword_boosts": ["Agile", "business", "collaboration", "Azure", "AWS", "delivery", "workflow"], "summary_angle": "Engineer reimagining business processes with dependable software."},
+    "accenture": {"name": "Accenture", "aliases": ["accenture", "accenture solutions", "accenture technology"], "sector": "consulting", "values": ["Client value creation", "One global network", "Respect for the individual", "Best people", "Integrity", "Stewardship"], "bullet_style": "Client delivery at scale; technologies and outcomes.", "emphasis": ["client delivery", "cloud migration", "Agile", "multiple technologies"], "keyword_boosts": ["Agile", "Azure", "AWS", "migration", ".NET", "Java", "client", "delivery"], "summary_angle": "Versatile engineer delivering client solutions across technologies."},
+    "capgemini": {"name": "Capgemini", "aliases": ["capgemini", "capgemini engineering", "capgemini technology services", "sogeti"], "sector": "it_services", "values": ["Honesty", "Boldness", "Trust", "Freedom", "Team spirit", "Modesty", "Fun"], "bullet_style": "Delivery across client projects, Agile teamwork, mainstream enterprise stacks.", "emphasis": ["client project delivery", ".NET/Java", "cloud", "Agile/Scrum", "team spirit"], "keyword_boosts": [".NET", "C#", "Java", "SQL", "Azure", "AWS", "Agile", "delivery", "modules", "client"], "summary_angle": "Team-spirited engineer delivering enterprise projects end to end."},
+    "infosys": {"name": "Infosys", "aliases": ["infosys", "infosys limited", "infosys bpm"], "sector": "it_services", "values": ["Client Value", "Leadership by Example", "Integrity and Transparency", "Fairness", "Excellence"], "bullet_style": "Client value and delivery excellence.", "emphasis": ["client delivery", "enterprise stacks", "Agile"], "keyword_boosts": [".NET", "Java", "SQL", "Agile", "client", "delivery"], "summary_angle": "Engineer delivering client value on enterprise stacks."},
+    "tcs": {"name": "TCS", "aliases": ["tcs", "tata consultancy services", "tata consultancy"], "sector": "it_services", "values": ["Integrity", "Leading change", "Excellence", "Respect for the individual", "Learning and sharing"], "bullet_style": "Delivery and excellence, clear outcomes.", "emphasis": ["client delivery", "enterprise stacks", "Agile"], "keyword_boosts": [".NET", "Java", "SQL", "Agile", "delivery"], "summary_angle": "Engineer committed to excellent client delivery."},
+    "wipro": {"name": "Wipro", "aliases": ["wipro", "wipro limited", "wipro technologies"], "sector": "it_services", "values": ["Be passionate about clients' success", "Treat each person with respect", "Be global and responsible", "Unyielding integrity in everything we do"], "bullet_style": "Client success, responsible delivery.", "emphasis": ["client delivery", "cloud", "Agile"], "keyword_boosts": [".NET", "Java", "SQL", "Azure", "AWS", "Agile", "client"], "summary_angle": "Engineer passionate about client success."},
+    "hcltech": {"name": "HCLTech", "aliases": ["hcltech", "hcl technologies", "hcl tech", "hcl"], "sector": "it_services", "values": ["Customer first", "Integrity", "Collaboration", "Innovation"], "bullet_style": "Engineering delivery and customer outcomes.", "emphasis": ["delivery", "engineering services", "cloud"], "keyword_boosts": [".NET", "Java", "SQL", "Azure", "AWS", "delivery"], "summary_angle": "Engineer delivering dependable software for customers."},
+    "cognizant": {"name": "Cognizant", "aliases": ["cognizant", "cognizant technology solutions"], "sector": "it_services", "values": ["Start with a point of view", "Seek data, build knowledge", "Always strive, never settle", "Work as one", "Do the right thing, the right way"], "bullet_style": "Data-informed delivery, teamwork.", "emphasis": ["client delivery", "data", "Agile"], "keyword_boosts": [".NET", "Java", "SQL", "data", "Agile", "delivery"], "summary_angle": "Data-informed engineer delivering client projects."},
+    "thoughtworks": {"name": "Thoughtworks", "aliases": ["thoughtworks", "thoughtworks technologies"], "sector": "consulting", "values": ["Software excellence", "Social and economic justice", "Collaboration", "Continuous learning"], "bullet_style": "Engineering craft: clean code, testing, CI/CD, pairing, client outcomes.", "emphasis": ["TDD and clean code", "CI/CD", "Agile", "client collaboration"], "keyword_boosts": ["Unit Testing", "CI/CD", "Agile", "Code Review", "Design Patterns", "client"], "summary_angle": "Craft-focused engineer practising testing, CI/CD and Agile delivery."}
+  },
+
+  "relevance": {
+    "company_skill_boost": 1.5,
+    "company_keyword_weight": 0.35,
+    "must_have_weight": 4.0,
+    "generic_must_have_weight": 2.0,
+    "nice_to_have_weight": 2.5,
+    "family_priority_max": 2.0,
+    "family_priority_min": 0.5,
+    "family_keyword_weight": 0.4,
+    "implied_skill_factor": 0.5,
+    "tech_tag_factor": 0.3,
+    "jd_keyword_weight": 0.15,
+    "emphasis_weight": 0.4,
+    "listed_only_penalty": 0.5,
+    "stopwords": ["the", "and", "for", "with", "you", "your", "our", "are", "will", "that", "this", "from", "have", "has", "who", "what", "about", "into", "their", "they", "them", "can", "all", "any", "but", "not", "work", "working", "team", "teams", "role", "join", "years", "year", "experience", "including", "such", "using", "use", "used", "within", "across", "well", "plus", "also", "other", "more", "most", "help", "new", "able", "strong", "good", "great", "skills", "knowledge", "understanding", "ability", "etc", "per", "via", "own", "we", "us", "on", "in", "of", "to", "a", "an", "or", "as", "at", "by", "is", "be", "it", "its", "if", "do", "make", "get", "out", "up"]
+  },
+
+  "ats": {
+    "_about": "Deterministic ATS score modelled on common ATS / keyword-checker grading. Weights sum to 100.",
+    "target": 95,
+    "weights": {"parseability": 25, "keywords": 35, "title": 10, "metrics": 10, "sections": 10, "formatting": 10},
+    "must_have_weight": 2,
+    "nice_to_have_weight": 1,
+    "synonym_credit": 0.6,
+    "metric_full_ratio": 0.6,
+    "role_bullets_min": 3,
+    "group_bullets_max": 6,
+    "max_file_kb": 1024,
+    "title_strip_words": ["senior", "sr", "junior", "jr", "lead", "principal", "staff", "intern", "internship", "graduate", "entry", "level", "i", "ii", "iii", "iv", "mid", "remote", "hybrid", "contract"],
+    "title_forbidden_words": ["senior", "sr", "lead", "principal", "staff", "manager", "architect", "head", "director", "vp", "chief", "distinguished"],
+    "title_role_words": ["software", "engineer", "engineering", "developer", "development", "programmer", "backend", "back-end", "full-stack", "fullstack", "full", "stack", "application", "applications", "integration", "integrations", "ai", "web", "api", "sde", "swe", "net", ".net", "c#", "python", "and", "&", "/"],
+    "title_core_words": ["engineer", "developer", "programmer", "sde", "swe"],
+    "headline_targeting": "{headline} — targeting {title}",
+    "stray_glyphs": ["▸", "★", "�", "▪", "●", "➢", "❖"],
+    "standard_fonts": ["Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique", "Times-Roman", "Arial", "Calibri"]
+  },
+
+  "fit_ladder": [
+    {"font_size": 10.5, "leading": 13.6, "name_size": 20, "heading_size": 10.5, "margin_x_cm": 1.8, "margin_y_cm": 1.5, "section_gap": 9, "item_gap": 5, "bullet_gap": 1.4},
+    {"font_size": 10.25, "leading": 13.0, "name_size": 19.5, "heading_size": 10.5, "margin_x_cm": 1.7, "margin_y_cm": 1.4, "section_gap": 8, "item_gap": 4.5, "bullet_gap": 1.2},
+    {"font_size": 10.0, "leading": 12.6, "name_size": 19, "heading_size": 10.25, "margin_x_cm": 1.6, "margin_y_cm": 1.3, "section_gap": 7.5, "item_gap": 4, "bullet_gap": 1.0},
+    {"font_size": 9.75, "leading": 12.2, "name_size": 18.5, "heading_size": 10, "margin_x_cm": 1.5, "margin_y_cm": 1.25, "section_gap": 7, "item_gap": 3.5, "bullet_gap": 0.8},
+    {"font_size": 9.5, "leading": 11.8, "name_size": 18, "heading_size": 10, "margin_x_cm": 1.4, "margin_y_cm": 1.2, "section_gap": 6.5, "item_gap": 3, "bullet_gap": 0.6},
+    {"font_size": 9.25, "leading": 11.4, "name_size": 17.5, "heading_size": 9.75, "margin_x_cm": 1.3, "margin_y_cm": 1.2, "section_gap": 6, "item_gap": 2.5, "bullet_gap": 0.5},
+    {"font_size": 9.0, "leading": 11.0, "name_size": 17, "heading_size": 9.5, "margin_x_cm": 1.2, "margin_y_cm": 1.2, "section_gap": 5.5, "item_gap": 2, "bullet_gap": 0.4}
+  ],
+  "min_bullets": {"soft": 2, "hard": 1},
+  "min_skill_groups": 3,
+  "min_skill_items": 4
+}

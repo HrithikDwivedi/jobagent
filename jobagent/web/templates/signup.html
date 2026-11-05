@@ -1,0 +1,53 @@
+{% extends "_auth.html" %}
+{% block title %}Request an account{% endblock %}
+{% block card %}
+    <h1>Request an account</h1>
+    <p class="sub">Your request is reviewed by the administrator. You can sign in once it is approved; we will email you.</p>
+    <div class="approval-note" role="note">
+      <svg aria-hidden="true"><use href="/static/icons.svg#shield-check"></use></svg>
+      <div><strong>Admin-approved access.</strong> An admin reviews every account before it can sign in, which keeps everyone's resumes and applications private.</div>
+    </div>
+    {% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+    <form method="post" action="/signup">
+      <input type="hidden" name="pre_csrf" value="{{ pre_csrf }}">
+      <div class="field">
+        <label for="full_name">Full name</label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#user"></use></svg>
+          <input type="text" id="full_name" name="full_name" autocomplete="name" maxlength="120" value="{{ form.full_name or '' }}" required>
+        </div>
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#mail"></use></svg>
+          <input type="email" id="email" name="email" autocomplete="email" maxlength="254" value="{{ form.email or '' }}" required>
+        </div>
+      </div>
+      <div class="field">
+        <label for="username">Username</label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>
+          <input type="text" id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="40" value="{{ form.username or '' }}" required aria-describedby="user-rules">
+        </div>
+        <span class="hint" id="user-rules">3-40 characters: letters, digits, dot, dash or underscore.</span>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#lock"></use></svg>
+          <input type="password" id="password" name="password" autocomplete="new-password" minlength="12" required aria-describedby="pw-rules" data-strength>
+        </div>
+        <span class="hint" id="pw-rules">At least 12 characters, with upper- and lower-case letters and a digit.</span>
+      </div>
+      <div class="field">
+        <label for="password2">Confirm password</label>
+        <div class="input-wrap">
+          <svg class="lead" aria-hidden="true"><use href="/static/icons.svg#lock"></use></svg>
+          <input type="password" id="password2" name="password2" autocomplete="new-password" minlength="12" required data-match="#password">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg" data-loading-text="Sending request…">Request account</button>
+    </form>
+    <p class="auth-switch mb0">Already have an account? <a href="/login">Sign in</a></p>
+{% endblock %}

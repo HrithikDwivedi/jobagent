@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ job.title }}{% endblock %}
+{% block content %}
+{% set back = request.url.path %}
+<p class="small"><a class="back-link" href="/jobs"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#arrow-left"></use></svg> Back to jobs</a></p>
+<div class="card container-narrow">
+  {{ m.job_detail(job, back, "h1", guidance) }}
+</div>
+{% endblock %}

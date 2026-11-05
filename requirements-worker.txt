@@ -1,0 +1,4 @@
+# Auto-apply worker (runs locally or in GitHub Actions; NOT needed by the Vercel dashboard).
+# After installing: python -m playwright install chromium   (CI: --with-deps chromium)
+-r requirements.txt
+playwright==1.64.1

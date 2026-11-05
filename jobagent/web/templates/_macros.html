@@ -1,0 +1,325 @@
+{# Shared presentation macros. Import with: {% import "_macros.html" as m with context %} #}
+{% set SPON = {"confirmed": "Sponsorship confirmed", "likely": "Sponsorship likely", "unknown": "Sponsorship unknown", "not_supported": "No sponsorship"} %}
+{% set SPON_SHORT = {"confirmed": "Confirmed", "likely": "Likely", "unknown": "Unknown", "not_supported": "Not supported"} %}
+{% set REC = {"apply": "Apply", "review": "Review", "improve_skills": "Improve skills", "skip": "Skip"} %}
+{% set REMOTE = {"onsite": "On-site", "hybrid": "Hybrid", "remote": "Remote", "unknown": "Not specified"} %}
+{% set JOBTYPE = {"full_time": "Full-time", "part_time": "Part-time", "contract": "Contract", "temporary": "Temporary", "internship": "Internship", "unspecified": "Not specified"} %}
+{% set COMPONENTS = {"technical": "Technical skills", "experience": "Experience & seniority", "sponsorship": "Sponsorship / work rights", "role": "Role alignment", "location_language": "Location & language", "compensation": "Compensation"} %}
+
+{% macro dt(v, n=16) -%}
+{%- if v -%}{{ (v|string)[:n]|replace('T', ' ') }}{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{% macro d(v) -%}{{ dt(v, 10) }}{%- endmacro %}
+
+{% macro dash(v) -%}{%- if v is not none and v != '' -%}{{ v }}{%- else -%}—{%- endif -%}{%- endmacro %}
+
+{% macro ext(url, text=None, cls="") -%}
+{%- if url and url.startswith('https://') -%}
+<a href="{{ url }}" target="_blank" rel="noopener noreferrer" class="external {{ cls }}">{{ text or url }}</a>
+{%- elif url -%}<span class="muted" title="Not an https link">{{ text or url }}</span>
+{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{% macro spon_badge(c, short=False) -%}
+{%- set c = c or 'unknown' -%}
+<span class="badge b-{{ c }}">{{ (SPON_SHORT if short else SPON).get(c, c) }}</span>
+{%- endmacro %}
+
+{% macro rec_badge(r) -%}
+{%- if r -%}<span class="badge b-{{ r }}">{{ REC.get(r, r) }}</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro status_badge(s) -%}
+{%- if s -%}<span class="badge b-{{ s }}">{{ labels.get(s, s) }}</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro remote_badge(r) -%}
+{%- if r and r != 'unknown' -%}<span class="badge b-{{ r }}">{{ REMOTE.get(r, r) }}</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro job_status_badge(s) -%}
+{%- if s == 'open' -%}<span class="badge b-open">Open</span>
+{%- elif s -%}<span class="badge b-{{ 'closed-job' if s in ('closed', 'expired') else 'unverified' }}">{{ s|capitalize }}</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro score_circle(score, big=False) -%}
+{%- if score is none -%}
+<span class="score s-none{{ ' big' if big }}" title="Not scored yet"><svg class="ring" viewBox="0 0 36 36" aria-hidden="true" focusable="false"><circle class="ring-track" cx="18" cy="18" r="15.5" pathLength="100"></circle></svg><span class="score-num">–</span></span>
+{%- else -%}
+{%- set sv = score|round|int -%}
+<span class="score {{ 's-high' if score >= 70 else ('s-mid' if score >= 50 else 's-low') }}{{ ' big' if big }}" title="Match score {{ score }} / 100"><svg class="ring" viewBox="0 0 36 36" aria-hidden="true" focusable="false"><circle class="ring-track" cx="18" cy="18" r="15.5" pathLength="100"></circle><circle class="ring-val" cx="18" cy="18" r="15.5" pathLength="100" stroke-dasharray="{{ [[sv, 0]|max, 100]|min }} 100"></circle></svg><span class="score-num"><span class="visually-hidden">Match score </span><span data-count="{{ sv }}">{{ sv }}</span></span></span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro mono(name, cls="") -%}
+{%- set words = (name or '?').replace('(', ' ').replace(')', ' ').split() -%}
+{%- set ini = ((words[0][:1] ~ (words[1][:1] if words|length > 1 else words[0][1:2])) if words else '?')|upper -%}
+<span class="mono mono-{{ (name or '')|length % 8 }} {{ cls }}" aria-hidden="true">{{ ini }}</span>
+{%- endmacro %}
+
+{% macro ico(id, cls="ico") -%}<svg class="{{ cls }}" aria-hidden="true" focusable="false"><use href="/static/icons.svg#{{ id }}"></use></svg>{%- endmacro %}
+
+{% macro location(j) -%}
+{%- set parts = [] -%}
+{%- if j.city %}{% set _ = parts.append(j.city) %}{% endif -%}
+{%- if j.country %}{% set _ = parts.append(countries.get(j.country, j.country)) %}{% endif -%}
+{%- if parts %}{{ parts|join(', ') }}{% elif j.location_raw %}{{ j.location_raw }}{% else %}Location not specified{% endif -%}
+{%- endmacro %}
+
+{% macro salary(j) -%}
+{%- if j.salary_max -%}
+{%- if j.salary_min and j.salary_min != j.salary_max %}{{ "{:,.0f}".format(j.salary_min) }}–{% endif %}{{ "{:,.0f}".format(j.salary_max) }} {{ j.salary_currency or '' }}{% if j.salary_period %} / {{ j.salary_period }}{% endif %}
+{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{% macro credit_label(c) -%}
+{%- if c >= 1 -%}<span class="badge b-green">Demonstrated</span>
+{%- elif c >= 0.35 -%}<span class="badge b-amber">Partial</span>
+{%- else -%}<span class="badge b-red">Missing</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro skills_table(items, caption) -%}
+{%- if items -%}
+<div class="table-wrap">
+  <table>
+    <caption class="visually-hidden">{{ caption }}</caption>
+    <thead><tr><th scope="col">Skill</th><th scope="col">Your evidence</th><th scope="col">Why</th></tr></thead>
+    <tbody>
+    {% for s in items %}
+      <tr><td>{{ s.skill }}</td><td>{{ credit_label(s.credit) }}</td><td>{{ s.why }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{%- else -%}<p class="muted">None extracted from the listing.</p>{%- endif -%}
+{%- endmacro %}
+
+{# ------------------------------------------------------------------ full job detail #}
+{% macro job_detail(job, back, heading="h2", guidance=None) -%}
+{%- set det = job.details or {} -%}
+{%- set sp = det.sponsorship or {} -%}
+<article class="job-detail" aria-labelledby="job-{{ job.id }}-title">
+  <div class="job-head">
+    <div class="row between">
+      <div class="grow job-head-row">
+        {{ mono(job.employer, "lg") }}
+        <div class="grow">
+        <{{ heading }} id="job-{{ job.id }}-title" tabindex="-1">{{ job.title }}</{{ heading }}>
+        <div class="emp">{{ job.employer }}</div>
+        <div class="loc">{{ ico('pin') }} {{ location(job) }}</div>
+        </div>
+      </div>
+      {{ score_circle(job.score, True) }}
+    </div>
+    <div class="row mt">
+      {{ job_status_badge(job.status) }}
+      {{ remote_badge(job.remote_type) }}
+      {{ spon_badge(job.sponsorship) }}
+      {{ rec_badge(job.recommendation) }}
+      {% if job.app_status %}{{ status_badge(job.app_status) }}{% endif %}
+      {% if job.bookmarked %}<span class="badge b-blue">★ Bookmarked</span>{% endif %}
+    </div>
+    <dl class="facts">
+      <div><dt>Work arrangement</dt><dd>{{ REMOTE.get(job.remote_type, job.remote_type or '—') }}</dd></div>
+      <div><dt>Employment type</dt><dd>{{ JOBTYPE.get(job.employment_type or 'unspecified', job.employment_type) }}</dd></div>
+      <div><dt>Seniority</dt><dd>{{ (job.seniority or 'unspecified')|capitalize }}</dd></div>
+      <div><dt>Experience asked</dt><dd>{% if job.experience_min_years is not none %}{{ job.experience_min_years|round(1) }}+ years{% else %}—{% endif %}</dd></div>
+      <div><dt>Salary</dt><dd>{{ salary(job) }}{% if job.salary_max %} <span class="muted small">({{ 'from listing' if (job.salary_source or 'listing') == 'listing' else job.salary_source }})</span>{% endif %}</dd></div>
+      <div><dt>Posted</dt><dd>{{ d(job.published_at) }}</dd></div>
+      <div><dt>Discovered</dt><dd>{{ d(job.first_discovered_at) }}</dd></div>
+      <div><dt>Last verified</dt><dd>{{ dt(job.last_verified_at) }}</dd></div>
+      {% if job.deadline %}<div><dt>Deadline</dt><dd>{{ d(job.deadline) }}</dd></div>{% endif %}
+      {% if job.requisition_id %}<div><dt>Requisition</dt><dd>{{ job.requisition_id }}</dd></div>{% endif %}
+    </dl>
+  </div>
+
+  {% if job.status != 'open' %}
+    <div class="alert alert-warn">This listing is <strong>{{ job.status }}</strong> at its source. Re-check it before applying.</div>
+  {% endif %}
+
+  <div class="action-bar" role="group" aria-label="Job actions">
+    {% if job.app_id and job.app_status not in ['shortlisted', 'submission_failed', 'closed'] %}
+      <a class="btn btn-primary btn-cta" href="/applications/{{ job.app_id }}">{{ ico('applications') }} View application</a>
+    {% else %}
+      <form method="post" action="/jobs/{{ job.id }}/apply" class="inline" data-overlay="apply">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="btn btn-primary btn-cta" data-loading-text="Agent working…">{{ ico('sparkle') }} Apply with agent</button>
+      </form>
+    {% endif %}
+    {% if job.canonical_url and job.canonical_url.startswith('https://') %}
+      <a class="btn btn-outline external" href="{{ job.canonical_url }}" target="_blank" rel="noopener noreferrer">Open original listing</a>
+    {% endif %}
+    {% if job.apply_url and job.apply_url.startswith('https://') %}
+      <a class="btn external" href="{{ job.apply_url }}" target="_blank" rel="noopener noreferrer">Official application page</a>
+    {% endif %}
+    <form method="post" action="/jobs/{{ job.id }}/bookmark" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="back" value="{{ back }}">
+      <button type="submit" class="btn" aria-pressed="{{ 'true' if job.bookmarked else 'false' }}" data-loading-text="Saving…">{{ '★ Bookmarked' if job.bookmarked else '☆ Bookmark' }}</button>
+    </form>
+    <form method="post" action="/jobs/{{ job.id }}/verify" class="inline" data-overlay="verify">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="back" value="{{ back }}">
+      <button type="submit" class="btn" data-loading-text="Re-checking…">{{ ico('refresh') }} Re-check listing</button>
+    </form>
+  </div>
+  <p class="muted small cta-note">{{ ico('shield-check') }}<span>“Apply with agent” re-checks the listing and prepares a tailored resume, cover letter and answers for your review. Nothing is sent without your explicit approval, and you submit on the employer’s own site.</span></p>
+
+  {% if not job.app_id or job.app_status in ['shortlisted', 'awaiting_approval', 'ready_to_apply', 'submission_failed', 'closed'] %}
+  <details class="disclosure">
+    <summary>Already applied elsewhere?</summary>
+    <div class="disclosure-body">
+      <form method="post" action="/jobs/{{ job.id }}/external">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="form-grid">
+          <div class="field">
+            <label for="ext-date-{{ job.id }}">Applied on</label>
+            <input type="date" id="ext-date-{{ job.id }}" name="applied_on" value="{{ today }}" required>
+          </div>
+          <div class="field">
+            <label for="ext-note-{{ job.id }}">Note <span class="hint">(optional)</span></label>
+            <input type="text" id="ext-note-{{ job.id }}" name="note" maxlength="1000" placeholder="e.g. via referral, LinkedIn Easy Apply">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-sm">Record as applied outside JobAgent</button>
+      </form>
+    </div>
+  </details>
+  {% endif %}
+
+  {% if job.similar_applications %}
+    <div class="alert alert-warn" role="note">
+      <strong>You applied to a similar role here.</strong>
+      <ul>
+        {% for s in job.similar_applications %}
+          <li><a href="/applications/{{ s.id }}">{{ s.title }}</a> — {{ labels.get(s.status, s.status) }}{% if s.submitted_at %}, submitted {{ d(s.submitted_at) }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <section class="section" aria-labelledby="match-{{ job.id }}">
+    <h3 id="match-{{ job.id }}">Match breakdown</h3>
+    {% if det.components %}
+      <div class="score-head">
+        {{ score_circle(job.score, True) }}
+        <div>
+          <div><strong>{{ job.score }}</strong> / 100 {{ rec_badge(job.recommendation) }}</div>
+          <div class="muted small">Scored {{ dt(job.scored_at) }} · transparent rules, no hidden factors</div>
+        </div>
+      </div>
+      <div class="bars">
+        {% for k, v in det.components.items() %}
+          <div class="bar-row">
+            <label for="m-{{ job.id }}-{{ k }}">{{ COMPONENTS.get(k, k) }}</label>
+            <meter id="m-{{ job.id }}-{{ k }}" min="0" max="1" low="0.45" high="0.7" optimum="1" value="{{ v }}">{{ (v * 100)|round|int }}%</meter>
+            <span class="small"><strong>{{ (v * 100)|round|int }}%</strong> <span class="muted">× {{ (det.weights or {}).get(k, '—') }}</span></span>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">Not scored yet. Upload your resume in Resume Studio and run the agent.</p>
+    {% endif %}
+
+    {% if det.disqualifiers %}
+      <div class="box-red mt" role="note"><strong>Disqualifiers</strong>
+        <ul>{% for x in det.disqualifiers %}<li>{{ x }}</li>{% endfor %}</ul>
+      </div>
+    {% endif %}
+    <div class="grid grid-2 mt">
+      <div>
+        <h4>Reasons to apply</h4>
+        {% if det.reasons %}<ul class="list-good">{% for x in det.reasons %}<li>{{ x }}</li>{% endfor %}</ul>{% else %}<p class="muted">—</p>{% endif %}
+      </div>
+      <div>
+        <h4>Gaps / missing</h4>
+        {% if det.gaps %}<ul class="list-gap">{% for x in det.gaps %}<li>{{ x }}</li>{% endfor %}</ul>{% else %}<p class="muted">—</p>{% endif %}
+      </div>
+    </div>
+    {% if det.notes %}
+      <h4>Notes</h4>
+      <ul>{% for x in det.notes %}<li>{{ x }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+
+  <section class="section" aria-labelledby="skills-{{ job.id }}">
+    <h3 id="skills-{{ job.id }}">Skills</h3>
+    <h4>Must-have</h4>
+    {{ skills_table(det.must_have, "Must-have skills") }}
+    <h4 class="mt">Nice-to-have</h4>
+    {{ skills_table(det.nice_to_have, "Nice-to-have skills") }}
+    {% if det.effort_minutes %}
+      <p class="mt"><strong>Estimated effort:</strong> ~{{ det.effort_minutes }} minutes{% if det.effort_notes %} <span class="muted">({{ det.effort_notes|join(', ') }})</span>{% endif %}</p>
+    {% endif %}
+  </section>
+
+  <section class="section" aria-labelledby="spon-{{ job.id }}">
+    <h3 id="spon-{{ job.id }}">Sponsorship & work rights</h3>
+    <p>{{ spon_badge(job.sponsorship) }}{% if sp.needs_sponsorship is sameas false %} <span class="badge b-green">No sponsorship needed</span>{% endif %}</p>
+    {% if sp.note %}<p>{{ sp.note }}</p>{% endif %}
+    {% set ev = job.evidence or sp.evidence or [] %}
+    {% if ev %}
+      <ul class="evidence">
+        {% for e in ev %}
+          <li><span class="badge badge-outline">{{ e.kind|replace('_', ' ') }}</span>
+            <blockquote>“{{ e.text }}”</blockquote>
+            <span class="small muted">Source: {{ ext(e.source, 'source') if e.source and e.source.startswith('https://') else (e.source or '—') }} · checked {{ dt(e.checked_at) }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">No sponsorship evidence found in the listing.</p>
+    {% endif %}
+    {% if job.uk_sponsor_status %}<p class="small muted">UK sponsor register: {{ job.uk_sponsor_status }}{% if job.uk_sponsor_routes %} ({{ job.uk_sponsor_routes }}){% endif %}</p>{% endif %}
+    {% if job.relocation_text %}<p class="small"><strong>Relocation:</strong> {{ job.relocation_text }}</p>{% endif %}
+    {% if guidance %}
+      <div class="card mt">
+        <h4>{{ countries.get(job.country, job.country) }}: {{ guidance[0] }}</h4>
+        <p>{{ ext(guidance[1], 'Official guidance') }}</p>
+        {% if guidance[2] %}<p class="small muted mb0">Questions to ask the employer:</p><ul>{% for q in guidance[2] %}<li>{{ q }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+    {% endif %}
+  </section>
+
+  {% set langs = job.languages or (det.analysis or {}).get('languages') or [] %}
+  <section class="section" aria-labelledby="lang-{{ job.id }}">
+    <h3 id="lang-{{ job.id }}">Languages</h3>
+    {% if langs %}
+      <ul>{% for l in langs %}<li>{{ l.language }}{% if l.level %} ({{ l.level }}){% endif %} — {{ 'required' if l.required else 'a plus' }}</li>{% endfor %}</ul>
+    {% else %}<p class="muted">No language requirements detected besides English.</p>{% endif %}
+  </section>
+
+  {% if job.plan %}
+  <section class="section" aria-labelledby="prep-{{ job.id }}">
+    <h3 id="prep-{{ job.id }}">Preparation</h3>
+    <p class="small">
+      <strong>Demonstrated:</strong> {{ job.plan.demonstrated|join(', ') or '—' }}<br>
+      <strong>Partial:</strong> {{ job.plan.partial|join(', ') or '—' }}<br>
+      <strong>Missing:</strong> {{ job.plan.missing|join(', ') or '—' }}
+    </p>
+    {% if job.plan.study_plan %}<p class="small">Study first: {% for s in job.plan.study_plan[:4] %}{{ s.skill }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+    <a href="/prep">Open the full prep plan</a>
+  </section>
+  {% endif %}
+
+  <section class="section" aria-labelledby="src-{{ job.id }}">
+    <h3 id="src-{{ job.id }}">Where this job was seen</h3>
+    {% if job.listings %}
+      <div class="table-wrap"><table>
+        <thead><tr><th scope="col">Source</th><th scope="col">Listing</th><th scope="col">First seen</th><th scope="col">Last seen</th></tr></thead>
+        <tbody>
+        {% for l in job.listings %}
+          <tr><td>{{ l.source }}</td><td>{{ ext(l.url, 'Open') }}</td><td class="nowrap">{{ d(l.first_seen_at) }}</td><td class="nowrap">{{ d(l.last_seen_at) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    {% else %}<p class="muted">—</p>{% endif %}
+  </section>
+
+  <section class="section" aria-labelledby="desc-{{ job.id }}">
+    <h3 id="desc-{{ job.id }}">Full description</h3>
+    {% if job.description_text %}<div class="description">{{ job.description_text }}</div>{% else %}<p class="muted">No description text available.</p>{% endif %}
+  </section>
+</article>
+{%- endmacro %}

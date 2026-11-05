@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Top MNCs{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Top MNCs</h1>
+    <p>Software-engineering openings at large multinationals, pulled from each company's own careers site. Applying
+    from here tailors a one-page resume to that company's style and the job's requirements.</p>
+  </div>
+  <div class="row">
+    <a class="btn" href="/jobs?mnc=all"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#filter"></use></svg> All MNC jobs with filters</a>
+  </div>
+</div>
+
+{% if not mnc_settings.enabled %}
+  <div class="alert alert-warn" role="alert">MNC feeds are switched off in <a href="/settings#sources">Settings</a>.</div>
+{% endif %}
+
+<nav class="settings-nav" aria-label="Filter by sector">
+  <a class="chip" href="/mnc"{% if not sector %} aria-current="true"{% endif %}>All</a>
+  {% for k, l in sectors.items() %}
+    <a class="chip" href="/mnc?sector={{ k }}"{% if sector == k %} aria-current="true"{% endif %}>{{ l }}</a>
+  {% endfor %}
+</nav>
+
+<section aria-labelledby="co-h">
+  <h2 id="co-h" class="visually-hidden">Companies</h2>
+  <ul class="grid grid-auto mnc-grid">
+  {% for c in companies %}
+    <li class="card mnc-card">
+      <div class="row between">
+        {{ m.mono(c.name, "mnc-logo") }}
+        <span class="badge b-grey">{{ sectors.get(c.sector, c.sector) }}</span>
+      </div>
+      <h3 class="mnc-name">{{ c.name }}</h3>
+      {% if c.has_feed %}
+        <p class="mnc-stat"><strong>{{ c.open_jobs }}</strong> open software role{{ '' if c.open_jobs == 1 else 's' }} in your target countries
+          {% if c.best_score %}<br><span class="small muted">Best match {{ '%.0f'|format(c.best_score) }} · {{ c.apply_count }} recommended</span>{% endif %}
+          {% if c.applications %}<br><span class="small">{{ c.applications }} application{{ '' if c.applications == 1 else 's' }} tracked</span>{% endif %}
+        </p>
+        <div class="row">
+          {% if c.open_jobs %}<a class="btn btn-primary btn-sm" href="/jobs?mnc={{ c.key }}">View jobs <svg class="ico" aria-hidden="true"><use href="/static/icons.svg#arrow-right"></use></svg></a>{% endif %}
+          {{ m.ext(c.careers_url, "Careers site", "btn btn-sm") }}
+        </div>
+      {% else %}
+        <p class="mnc-stat small muted">No public feed that permits automated access{% if c.why_no_feed %} ({{ c.why_no_feed }}){% endif %}. Search on their official site and use “Already applied elsewhere” so JobAgent tracks it.</p>
+        <div class="row">{{ m.ext(c.careers_url, "Search software jobs", "btn btn-primary btn-sm") }}</div>
+      {% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+</section>
+
+<section class="card" aria-labelledby="top-h">
+  <div class="row between">
+    <h2 id="top-h">Best-matching MNC roles</h2>
+    <a href="/jobs?mnc=all&amp;sort=relevant">See all {{ top_total }}</a>
+  </div>
+  {% if top_rows %}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Role</th><th scope="col">Company</th><th scope="col">Location</th><th scope="col">Sponsorship</th><th scope="col" class="num">Match</th><th scope="col">Status</th></tr></thead>
+      <tbody>
+      {% for r in top_rows %}
+        <tr>
+          <td><a href="/jobs?mnc=all&amp;job={{ r.id }}">{{ r.title }}</a></td>
+          <td>{{ r.employer }}</td>
+          <td>{{ m.location(r) }}</td>
+          <td>{{ m.spon_badge(r.sponsorship, True) }}</td>
+          <td class="num">{{ m.score_circle(r.score) }}</td>
+          <td>{% if r.app_status %}{{ m.status_badge(r.app_status) }}{% else %}{{ m.rec_badge(r.recommendation) }}{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <p class="muted">No MNC jobs yet. Run the agent from <a href="/runs">Agent Runs</a>; MNC career sites are fetched first.</p>
+  {% endif %}
+</section>
+{% endblock %}
