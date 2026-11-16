@@ -26,8 +26,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # Without the database secret the worker would open an empty throwaway SQLite DB and exit 1 every
+      # 3 hours ("Create an account first"). Skip with a single warning instead of failing (and emailing).
+      - name: Preflight (repository secrets)
+        id: preflight
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JOBAGENT_SECRET_KEY: ${{ secrets.JOBAGENT_SECRET_KEY }}
+        run: |
+          missing=""
+          [ -z "$DATABASE_URL" ] && missing="$missing DATABASE_URL"
+          [ -z "$JOBAGENT_SECRET_KEY" ] && missing="$missing JOBAGENT_SECRET_KEY"
+          if [ -n "$missing" ]; then
+            echo "::warning title=Auto-apply skipped::Repository secret(s) not set:$missing. Add them under Settings -> Secrets and variables -> Actions (DATABASE_URL = the Neon Postgres URL used by Vercel)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v5
+        if: steps.preflight.outputs.ready == 'true'
+      - uses: actions/setup-python@v6
+        if: steps.preflight.outputs.ready == 'true'
         with:
           python-version: "3.12"
           cache: pip
@@ -35,11 +54,13 @@ jobs:
             requirements.txt
             requirements-worker.txt
       - name: Install
+        if: steps.preflight.outputs.ready == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-worker.txt
           python -m playwright install --with-deps chromium
       - name: Auto-apply (headless; CAPTCHA-protected forms are handed back to you)
+        if: steps.preflight.outputs.ready == 'true'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JOBAGENT_SECRET_KEY: ${{ secrets.JOBAGENT_SECRET_KEY }}
@@ -52,6 +73,15 @@ jobs:
           args=""
           if [ "$DRY_RUN" = "true" ]; then args="$args --dry-run"; fi
           if [ -n "$LIMIT" ]; then args="$args --limit $LIMIT"; fi
-          python -m jobagent autoapply $args
+          set +e
+          python -m jobagent autoapply $args 2>&1 | tee "$RUNNER_TEMP/autoapply.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # surface the actual reason in the failure annotation/email instead of only "exit code 1"
+            reason=$(grep -v '^\s*$' "$RUNNER_TEMP/autoapply.log" | tail -n 1 | cut -c1-300)
+            echo "::error title=Auto-apply failed::${reason:-see the job log}"
+          fi
+          exit "$status"
       # Deliberately NO upload-artifact step: screenshots and forms contain personal data. Evidence screenshots of
       # confirmed submissions are stored in the database (files table) and shown in the dashboard.

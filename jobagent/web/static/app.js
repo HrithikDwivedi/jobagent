@@ -41,7 +41,6 @@
     if (text != null) e.textContent = text;
     return e;
   }
-  var lowPower = (navigator.hardwareConcurrency || 8) <= 4;
 
   // ================================================================= top progress bar
   var progress = (function () {
@@ -126,24 +125,24 @@
       box.setAttribute("aria-busy", "true");
       var inner = el("div", "agent-box");
       inner.tabIndex = -1;
-      var radar = el("div", "radar");
-      radar.setAttribute("aria-hidden", "true");
-      radar.appendChild(el("div", "radar-orbit"));
-      radar.appendChild(el("div", "radar-sweep"));
-      ["b1", "b2", "b3", "b4"].forEach(function (b) { radar.appendChild(el("span", "blip " + b)); });
-      var core = el("div", "radar-core");
-      core.appendChild(icon("logo"));
-      radar.appendChild(core);
+      // header: quiet spinner + title + current step
+      var head = el("div", "agent-head");
+      var ring = el("span", "agent-ring");
+      ring.setAttribute("aria-hidden", "true");
+      var headText = el("div", "grow");
       titleEl = el("h2", "agent-title");
       stageEl = el("p", "agent-stage mb0");
-      subEl = el("p", "agent-sub mb0");
+      headText.appendChild(titleEl);
+      headText.appendChild(stageEl);
+      head.appendChild(ring);
+      head.appendChild(headText);
       var barEl = el("div", "agent-bar");
       barEl.setAttribute("aria-hidden", "true");
-      dots = el("ol", "agent-dots");
+      // step checklist (completed steps get a tick, the current one a small spinner)
+      dots = el("ol", "agent-steps");
       dots.setAttribute("aria-hidden", "true");
-      inner.appendChild(radar);
-      inner.appendChild(titleEl);
-      inner.appendChild(stageEl);
+      subEl = el("p", "agent-sub mb0");
+      inner.appendChild(head);
       inner.appendChild(barEl);
       inner.appendChild(dots);
       inner.appendChild(subEl);
@@ -151,11 +150,12 @@
       doc.body.appendChild(box);
     }
     function setStage(cfg, i) {
-      var span = el("span", null, cfg.stages[i % cfg.stages.length]);
+      // advance through the steps once and hold on the last one (never loop back to step 1)
+      var k = Math.min(i, cfg.stages.length - 1);
+      var span = el("span", null, "Step " + (k + 1) + " of " + cfg.stages.length + " · " + cfg.stages[k]);
       stageEl.textContent = "";
       stageEl.appendChild(span);
       $all("li", dots).forEach(function (d, j) {
-        var k = i % cfg.stages.length;
         d.className = j === k ? "on" : (j < k ? "done" : "");
       });
     }
@@ -166,11 +166,15 @@
       titleEl.textContent = cfg.title;
       subEl.textContent = cfg.sub;
       dots.textContent = "";
-      cfg.stages.forEach(function () { dots.appendChild(doc.createElement("li")); });
+      cfg.stages.forEach(function (s) { dots.appendChild(el("li", null, s.replace(/…$/, ""))); });
       var i = 0;
       setStage(cfg, i);
       clearInterval(timer);
-      timer = setInterval(function () { i += 1; setStage(cfg, i); }, 2300);
+      timer = setInterval(function () {
+        i += 1;
+        setStage(cfg, i);
+        if (i >= cfg.stages.length - 1) clearInterval(timer);
+      }, 2600);
       // show on the next frame so the fade-in transition runs
       requestAnimationFrame(function () {
         box.classList.add("show");
@@ -535,14 +539,8 @@
     // ---------------------------------------------------------------- reveal: score rings + count-up numbers
     enhance(doc);
 
-    // ---------------------------------------------------------------- hover tilt on cards
-    initTilt();
-
     // ---------------------------------------------------------------- jobs: in-page detail pane with skeleton
     initJobPane();
-
-    // ---------------------------------------------------------------- constellation background
-    initStarfield();
 
     progress.done();
   });
@@ -592,32 +590,6 @@
     $all(".score, .kpi-value[data-count]", scope).forEach(function (n) {
       if (io && !reduced()) io.observe(n);
       else n.classList.add("in-view");
-    });
-  }
-
-  // ================================================================= tilt
-  function initTilt() {
-    if (reduced() || !mq("(hover: hover) and (pointer: fine)").matches) return;
-    $all(".job-card, .mnc-card").forEach(function (card) {
-      var raf = 0, px = 0, py = 0;
-      function apply() {
-        raf = 0;
-        var r = card.getBoundingClientRect();
-        var x = (px - r.left) / r.width - 0.5;
-        var y = (py - r.top) / r.height - 0.5;
-        card.style.setProperty("--rx", (-y * 4).toFixed(2) + "deg");
-        card.style.setProperty("--ry", (x * 5).toFixed(2) + "deg");
-      }
-      card.addEventListener("pointermove", function (e) {
-        px = e.clientX; py = e.clientY;
-        if (!raf) raf = requestAnimationFrame(apply);
-      });
-      card.addEventListener("pointerleave", function () {
-        if (raf) cancelAnimationFrame(raf);
-        raf = 0;
-        card.style.removeProperty("--rx");
-        card.style.removeProperty("--ry");
-      });
     });
   }
 
@@ -706,125 +678,5 @@
     window.addEventListener("popstate", function () {
       if (location.pathname === "/jobs") load(location.href, false);
     });
-  }
-
-  // ================================================================= constellation canvas
-  function initStarfield() {
-    if (reduced() || !window.requestAnimationFrame) return;
-    var canvas = el("canvas", "bg-canvas");
-    canvas.setAttribute("aria-hidden", "true");
-    var ctx = canvas.getContext && canvas.getContext("2d");
-    if (!ctx) return;
-    doc.body.insertBefore(canvas, doc.body.firstChild);
-
-    var dpr = Math.min(window.devicePixelRatio || 1, lowPower ? 1 : 1.5);
-    var W = 0, H = 0, nodes = [], raf = 0, last = 0, running = false;
-    var FRAME = 1000 / (lowPower ? 24 : 30);
-    var LINK = 140, LINK2 = LINK * LINK, MOUSE = 190, MOUSE2 = MOUSE * MOUSE;
-    var mouse = { x: -1e5, y: -1e5 };
-    var nodeRGB = "120,220,255", linkRGB = "129,140,248", sprite = null;
-
-    function readColors() {
-      var cs = getComputedStyle(root);
-      nodeRGB = (cs.getPropertyValue("--canvas-node") || "120,220,255").trim();
-      linkRGB = (cs.getPropertyValue("--canvas-link") || "129,140,248").trim();
-      // pre-rendered glow sprite: one drawImage per node instead of a gradient per frame
-      sprite = doc.createElement("canvas");
-      sprite.width = sprite.height = 32;
-      var s = sprite.getContext("2d");
-      var g = s.createRadialGradient(16, 16, 0, 16, 16, 16);
-      g.addColorStop(0, "rgba(" + nodeRGB + ",1)");
-      g.addColorStop(0.25, "rgba(" + nodeRGB + ",.55)");
-      g.addColorStop(1, "rgba(" + nodeRGB + ",0)");
-      s.fillStyle = g;
-      s.fillRect(0, 0, 32, 32);
-    }
-    function makeNode() {
-      return {
-        x: Math.random() * W, y: Math.random() * H,
-        vx: (Math.random() - 0.5) * 0.28, vy: (Math.random() - 0.5) * 0.28,
-        r: Math.random() * 1.3 + 0.6, p: Math.random() * Math.PI * 2
-      };
-    }
-    function resize() {
-      W = window.innerWidth; H = window.innerHeight;
-      canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      var target = Math.round((W * H) / (lowPower ? 30000 : 15000));
-      target = Math.max(16, Math.min(target, lowPower ? 38 : 90));
-      while (nodes.length < target) nodes.push(makeNode());
-      if (nodes.length > target) nodes.length = target;
-    }
-    function draw(ts) {
-      var i, j, a, b, dx, dy, d2, n = nodes.length;
-      ctx.clearRect(0, 0, W, H);
-      for (i = 0; i < n; i++) {
-        a = nodes[i];
-        a.x += a.vx; a.y += a.vy;
-        if (a.x < -20) a.x = W + 20; else if (a.x > W + 20) a.x = -20;
-        if (a.y < -20) a.y = H + 20; else if (a.y > H + 20) a.y = -20;
-      }
-      ctx.lineWidth = 1;
-      for (i = 0; i < n; i++) {
-        a = nodes[i];
-        for (j = i + 1; j < n; j++) {
-          b = nodes[j];
-          dx = a.x - b.x; dy = a.y - b.y; d2 = dx * dx + dy * dy;
-          if (d2 < LINK2) {
-            ctx.strokeStyle = "rgba(" + linkRGB + "," + ((1 - d2 / LINK2) * 0.32).toFixed(3) + ")";
-            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-          }
-        }
-        dx = a.x - mouse.x; dy = a.y - mouse.y; d2 = dx * dx + dy * dy;
-        if (d2 < MOUSE2) {
-          ctx.strokeStyle = "rgba(" + nodeRGB + "," + ((1 - d2 / MOUSE2) * 0.55).toFixed(3) + ")";
-          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(mouse.x, mouse.y); ctx.stroke();
-        }
-      }
-      for (i = 0; i < n; i++) {
-        a = nodes[i];
-        var tw = 0.65 + 0.35 * Math.sin(ts / 900 + a.p);
-        var size = a.r * 7 * tw;
-        ctx.globalAlpha = 0.55 + 0.45 * tw;
-        ctx.drawImage(sprite, a.x - size / 2, a.y - size / 2, size, size);
-      }
-      ctx.globalAlpha = 1;
-    }
-    function loop(ts) {
-      raf = requestAnimationFrame(loop);
-      if (ts - last < FRAME) return;
-      last = ts;
-      draw(ts);
-    }
-    function start() {
-      if (running || doc.hidden || reduced()) return;
-      running = true; last = 0;
-      raf = requestAnimationFrame(loop);
-    }
-    function stop() {
-      running = false;
-      if (raf) cancelAnimationFrame(raf);
-      raf = 0;
-    }
-
-    readColors();
-    resize();
-    start();
-
-    var rt = 0;
-    window.addEventListener("resize", function () {
-      clearTimeout(rt);
-      rt = setTimeout(function () { resize(); if (!running) draw(performance.now()); }, 150);
-    }, { passive: true });
-    window.addEventListener("pointermove", function (e) { mouse.x = e.clientX; mouse.y = e.clientY; }, { passive: true });
-    doc.addEventListener("pointerleave", function () { mouse.x = mouse.y = -1e5; });
-    // pause completely while the tab is hidden
-    doc.addEventListener("visibilitychange", function () { if (doc.hidden) stop(); else start(); });
-    onMQ(reducedMQ, function () {
-      if (reduced()) { stop(); canvas.style.display = "none"; }
-      else { canvas.style.display = ""; start(); }
-    });
-    doc.addEventListener("ja:theme", readColors);
-    onMQ(mq("(prefers-color-scheme: light)"), function () { readColors(); syncThemeButtons(); });
   }
 })();

@@ -290,7 +290,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"       needs you: {q}")
             if r.get("screenshot"):
                 print(f"       screenshot: {r['screenshot']}")
-        return 0 if res["status"] in ("succeeded", "partial", "disabled") else 1
+        # "locked" = another auto-apply run is still in progress; that is expected overlap, not a failure.
+        return 0 if res["status"] in ("succeeded", "partial", "disabled", "locked") else 1
 
     if args.cmd == "refresh-status":
         http = HttpClient(user_agent=cfg.user_agent)
