@@ -27,7 +27,7 @@ from .. import settings as settings_mod
 from ..config import AppConfig
 from ..db import Database, LockHeld, audit, iso, loads, named_lock
 from ..resume import store as resume_store
-from .captcha import detect_captcha
+from .captcha import detect_captcha, interactive_challenge
 from .drivers import BaseDriver, DriverError, driver_for, host_in
 from .matcher import Field, Matcher
 
@@ -312,8 +312,9 @@ class _Run:
         cover = (cl or {}).get("body") or ""
         cover_path = tmp / f"{stem}_Cover_Letter.txt"
         cover_path.write_text(cover, encoding="utf-8")
-        matcher = Matcher(cand, job, loads(app["answers_json"], []), _canonical_structured(self.db, app),
-                          self.pol, cover)
+        # this application's reviewed answers first, then the user's reusable screening-answer library
+        answers = list(loads(app["answers_json"], []) or []) + list(self.s.get("answer_library") or [])
+        matcher = Matcher(cand, job, answers, _canonical_structured(self.db, app), self.pol, cover)
         return {"resume": str(resume_path), "cover": str(cover_path)}, matcher
 
     def _open(self, page, bctx, driver: BaseDriver, url: str, family) -> object:
@@ -363,7 +364,9 @@ class _Run:
 
     def preflight(self, page, bctx, driver, url, matcher, family, has_cover):
         frame = self._open(page, bctx, driver, url, family)
-        captcha = detect_captcha(page)
+        # Invisible/score-based CAPTCHAs (reCAPTCHA v3, invisible hCaptcha) need nothing from a person and do not
+        # block; only a visible challenge does (it is never solved: handed back, or left for the user when headed).
+        captcha = interactive_challenge(page)
         fields, plan, blocking = self._plan(frame, driver, matcher, has_cover)
         if blocking:
             raise HandBack("unknown_questions", f"{len(blocking)} required question(s) have no confirmed answer.",
@@ -431,7 +434,7 @@ class _Run:
 
     def _submit(self, app_id, res, page, bctx, frame, driver, family) -> dict:
         db = self.db
-        captcha = detect_captcha(page)
+        captcha = interactive_challenge(page)
         if captcha:
             return self._failed_before(app_id, res, f"Bot protection appeared before submit ({', '.join(captcha)}); "
                                                     "not bypassed.")
@@ -446,6 +449,7 @@ class _Run:
             return self._uncertain(app_id, res, f"Error while clicking submit ({type(e).__name__}).")
         deadline = time.monotonic() + self.confirm_timeout
         conf = None
+        waited_for_person = False
         while time.monotonic() < deadline:
             try:
                 conf = driver.confirmation(page, before_text, before_url)
@@ -455,6 +459,19 @@ class _Run:
                 break
             if bctx.ja_blocked:
                 break
+            challenge = interactive_challenge(page)
+            if challenge and not waited_for_person:
+                # The site escalated to a visible challenge: the submission is held behind it, so nothing was sent.
+                if self.headless or self.assist_wait <= 0:
+                    return self._failed_before(app_id, res, "The site asked for a human verification "
+                                                            f"({', '.join(challenge)}) after Submit; nothing was sent. "
+                                                            "Retry, or apply yourself.")
+                print(f"Application #{app_id}: the site shows a verification challenge. Complete it in the browser "
+                      "window; the worker waits for the confirmation page.")
+                audit(db, actor=ACTOR, entity="application", entity_id=app_id, action="autoapply_waiting_for_person",
+                      detail={"challenge": challenge})
+                waited_for_person = True
+                deadline = time.monotonic() + self.assist_wait
             page.wait_for_timeout(500)
         if not conf:
             why = "navigation to another site was blocked" if bctx.ja_blocked else \

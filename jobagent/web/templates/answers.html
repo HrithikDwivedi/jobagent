@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Screening Answers{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Screening Answers</h1>
+    <p>Answer a recurring application question once and auto-apply reuses it on every form that asks it. Applications that were handed back to you are retried on the next run after you answer.</p>
+  </div>
+  <a class="btn" href="/settings#auto_apply">{{ m.ico('settings') }} Auto-apply settings</a>
+</div>
+
+{% if not pol.enabled %}
+  <div class="alert alert-warn" role="note"><strong>Auto-apply is switched off.</strong> Turn it on in <a href="/settings#auto_apply">Settings → Auto-apply</a>; until then every application waits for you to submit it yourself.</div>
+{% endif %}
+
+<div class="grid grid-2">
+  <section class="card" aria-labelledby="why-h">
+    <h2 id="why-h">Why applications were handed back</h2>
+    {% if ov.reasons %}
+      <div class="table-wrap"><table>
+        <thead><tr><th scope="col">Reason</th><th scope="col" class="num">Applications</th></tr></thead>
+        <tbody>
+        {% for code, label, n in ov.reasons %}
+          <tr><td>{{ label }}</td><td class="num">{{ n }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <p class="small muted mt mb0">Only the latest attempt of applications still waiting for you is counted.</p>
+    {% else %}
+      <div class="empty"><strong>Nothing handed back</strong>Auto-apply has not returned any application to you.</div>
+    {% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="consent-h">
+    <h2 id="consent-h">Required privacy boxes</h2>
+    <p class="muted">Many UK and EU forms require you to tick “I have read the privacy notice” or agree to data processing before submitting. Auto-apply only ticks these if you allow it.</p>
+    <form method="post" action="/answers/consent" class="row">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if pol.accept_privacy_notices %}
+        <span class="badge b-green">{{ m.ico('check') }} Ticked for you</span>
+        <input type="hidden" name="accept" value="0">
+        <button type="submit" class="btn btn-sm">Stop ticking them</button>
+      {% else %}
+        <span class="badge b-amber">Left for you</span>
+        <input type="hidden" name="accept" value="1">
+        <button type="submit" class="btn btn-sm btn-primary">Tick required privacy boxes for me</button>
+      {% endif %}
+    </form>
+    <p class="small muted mt mb0">Only required acknowledgements are ticked. Optional marketing or talent-pool boxes are always left unticked.</p>
+  </section>
+</div>
+
+<section class="card mt" aria-labelledby="pending-h">
+  <div class="card-title">
+    <h2 id="pending-h">Questions waiting for your answer</h2>
+    {% if ov.pending %}<span class="badge b-amber">{{ ov.pending|length }} to answer</span>{% endif %}
+  </div>
+  {% if ov.pending %}
+    <p class="muted">Write the answer exactly as you would type it on the form. For choice questions, write the option you would pick (for example “Yes”, “No”, “Immediately”, “1–3 years”).</p>
+    <form method="post" action="/answers" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% for p in ov.pending %}
+        <div class="answer-row">
+          <div>
+            <label for="ans-{{ loop.index }}">{{ p.question }}</label>
+            <div class="small muted">Blocks {{ p.apps|length }} application{{ 's' if p.apps|length != 1 }}
+              {%- for a in p.apps[:5] %}{{ ',' if not loop.first }} <a href="/applications/{{ a }}">#{{ a }}</a>{% endfor %}{% if p.apps|length > 5 %} …{% endif %}</div>
+            {% if p.consent %}<div class="small muted">Looks like a consent box: the switch above covers it.</div>{% endif %}
+          </div>
+          <div>
+            <input type="hidden" name="question" value="{{ p.question }}">
+            <textarea id="ans-{{ loop.index }}" name="answer" rows="2" maxlength="2000" placeholder="Your answer"></textarea>
+          </div>
+        </div>
+      {% endfor %}
+      <div class="form-actions"><button type="submit" class="btn btn-primary" data-loading-text="Saving…">{{ m.ico('check') }} Save answers and retry</button>
+        <span class="small muted">Blank answers are skipped.</span></div>
+    </form>
+  {% else %}
+    <div class="empty"><strong>No open questions</strong>When auto-apply meets a required question you have not answered, it appears here.</div>
+  {% endif %}
+</section>
+
+<section class="card mt" id="library" aria-labelledby="lib-h">
+  <h2 id="lib-h">Your saved answers</h2>
+  <form method="post" action="/answers" class="answer-row">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="field mb0"><label for="new-q">Question</label><input type="text" id="new-q" name="question" maxlength="300" placeholder="e.g. Do you have experience with Kubernetes?" required></div>
+    <div class="field mb0"><label for="new-a">Answer</label>
+      <div class="row"><input type="text" id="new-a" name="answer" maxlength="2000" class="grow" placeholder="e.g. Yes" required>
+      <button type="submit" class="btn">Add</button></div></div>
+  </form>
+  {% if ov.library %}
+    <div class="table-wrap mt"><table>
+      <thead><tr><th scope="col">Question</th><th scope="col">Answer</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+      <tbody>
+      {% for x in ov.library %}
+        <tr>
+          <td class="wrap-long">{{ x.question }}</td>
+          <td class="wrap-long">{{ x.answer }}</td>
+          <td class="right"><form method="post" action="/answers/delete" class="inline" data-no-loading>
+            <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="question" value="{{ x.question }}">
+            <button type="submit" class="btn btn-sm btn-ghost">Remove</button></form></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <p class="muted mt mb0">No saved answers yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -382,6 +382,8 @@
       var form = e.target;
       if (!form || form.tagName !== "FORM") return;
       var btn = e.submitter || form.querySelector("button[type=submit], button:not([type])");
+      // a submit that opens in another tab leaves this page as it is: no loader here
+      if ((btn && btn.formTarget === "_blank") || form.target === "_blank") return;
       progress.start();
       var kind = form.getAttribute("data-overlay");
       if (kind) overlay.show(kind);

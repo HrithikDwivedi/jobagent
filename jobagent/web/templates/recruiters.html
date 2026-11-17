@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Recruiters{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Recruiters</h1>
+    <p>Hiring contacts for your best-matched open jobs: addresses the employer published in the job post, plus people you add. Write to them about the specific role from your own mailbox.</p>
+  </div>
+</div>
+
+<form method="get" action="/recruiters" class="searchbar">
+  <div class="field"><label for="rq" class="visually-hidden">Company or role</label>
+    <div class="input-wrap">{{ m.ico('search', 'lead') }}<input type="search" id="rq" name="q" value="{{ q }}" placeholder="Company or role"></div></div>
+  <div class="field"><label for="rs" class="visually-hidden">Minimum match</label>
+    <select id="rs" name="min_score">{% for v in (0, 40, 50, 60, 70, 80) %}<option value="{{ v }}"{% if v == min_score %} selected{% endif %}>Match {{ v }}+</option>{% endfor %}</select></div>
+  <button type="submit" class="btn btn-primary">{{ m.ico('search') }} Search</button>
+</form>
+
+<div class="results-head">
+  <div class="results-count"><strong>{{ with_contacts }}</strong> of {{ total }} matched open jobs have a contact</div>
+  <div class="chips mb0">
+    <a class="chip" href="/recruiters?{{ {'q': q, 'min_score': min_score, 'show': 'with_contacts'}|urlencode }}"{% if show != 'all' %} aria-current="true"{% endif %}>With contacts</a>
+    <a class="chip" href="/recruiters?{{ {'q': q, 'min_score': min_score, 'show': 'all'}|urlencode }}"{% if show == 'all' %} aria-current="true"{% endif %}>All matched jobs</a>
+  </div>
+</div>
+
+{% if rows %}
+<ul class="job-list">
+  {% for r in rows %}
+  <li class="card">
+    <div class="job-head-row">
+      {{ m.mono(r.employer) }}
+      <div class="grow">
+        <a href="/jobs/{{ r.id }}" class="job-title-link"><strong>{{ r.title }}</strong></a>
+        <div>{{ r.employer }}</div>
+        <div class="small muted">{{ m.ico('pin') }} {{ r.location or '—' }}</div>
+      </div>
+      {{ m.score_circle(r.score) }}
+    </div>
+    {% if r.contacts %}
+      <ul class="contact-list">
+        {% for c in r.contacts %}
+        <li>
+          <div class="grow">
+            <strong>{{ c.name or ('Hiring team' if c.kind == 'generic' else c.email.split('@')[0]) }}</strong>
+            {% if c.role_title %}<span class="muted"> · {{ c.role_title }}</span>{% endif %}
+            <div class="small"><span class="fp">{{ c.email }}</span>
+              <span class="badge {{ 'b-blue' if c.source == 'job_posting' else 'b-purple' }}">{{ 'From the job post' if c.source == 'job_posting' else 'Added by you' }}</span>
+              {% if c.contacted_at %}<span class="badge b-green">Contacted {{ m.d(c.contacted_at) }}{% if c.contacted_n > 1 %} ×{{ c.contacted_n }}{% endif %}</span>{% endif %}
+              {% if c.profile_url %}{{ m.ext(c.profile_url, 'Profile') }}{% endif %}</div>
+          </div>
+          <div class="actions">
+            <a class="btn btn-sm {{ 'btn-outline' if c.contacted_at else 'btn-primary' }}" href="/recruiters/compose?{{ {'job': r.id, 'to': c.email, 'name': c.name or ''}|urlencode }}">{{ m.ico('mail') }} {{ 'Write again' if c.contacted_at else 'Write email' }}</a>
+            {% if c.id %}<form method="post" action="/recruiters/contacts/{{ c.id }}/delete" class="inline" data-no-loading>
+              <input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn-sm btn-ghost">Remove</button></form>{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="small muted mt mb0">No contact published in this job post.</p>
+    {% endif %}
+    <details class="disclosure mt mb0">
+      <summary>{{ m.ico('user') }} Add a contact for this job</summary>
+      <div class="disclosure-body">
+        <p class="small muted">Find the recruiter or hiring manager yourself, for example with this {{ m.ext(r.linkedin_search, 'LinkedIn people search') }}, then save their work email here.</p>
+        <form method="post" action="/recruiters/contacts" class="form-grid">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="job_id" value="{{ r.id }}">
+          <input type="hidden" name="company" value="{{ r.employer }}">
+          <input type="hidden" name="next" value="/recruiters?{{ {'q': q, 'min_score': min_score, 'show': show}|urlencode }}">
+          <div class="field"><label for="cn-{{ r.id }}">Name</label><input type="text" id="cn-{{ r.id }}" name="name" maxlength="120"></div>
+          <div class="field"><label for="ce-{{ r.id }}">Work email</label><input type="email" id="ce-{{ r.id }}" name="email" maxlength="254" required></div>
+          <div class="field"><label for="ct-{{ r.id }}">Their role</label><input type="text" id="ct-{{ r.id }}" name="role_title" maxlength="120" placeholder="Technical Recruiter"></div>
+          <div class="field"><label for="cp-{{ r.id }}">Profile link</label><input type="url" id="cp-{{ r.id }}" name="profile_url" maxlength="500" placeholder="https://www.linkedin.com/in/…"></div>
+          <div class="form-actions"><button type="submit" class="btn">Save contact</button></div>
+        </form>
+      </div>
+    </details>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+  <div class="card"><div class="empty"><strong>No matching jobs</strong>{% if show != 'all' %}None of your matched open jobs published a contact. <a href="/recruiters?{{ {'q': q, 'min_score': min_score, 'show': 'all'}|urlencode }}">Show all matched jobs</a> to add contacts yourself.{% else %}Lower the minimum match or run the agent to find more jobs.{% endif %}</div></div>
+{% endif %}
+
+<section class="card mt" aria-labelledby="hist-h">
+  <h2 id="hist-h">Outreach history</h2>
+  {% if history %}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">When</th><th scope="col">To</th><th scope="col">Job</th><th scope="col">Subject</th><th scope="col">How</th></tr></thead>
+      <tbody>
+      {% for h in history %}
+        <tr>
+          <td class="nowrap">{{ m.dt(h.created_at) }}</td>
+          <td>{{ h.to_name or '' }} <span class="fp">{{ h.to_addr }}</span></td>
+          <td>{% if h.job_id %}<a href="/jobs/{{ h.job_id }}">{{ h.title or 'Job' }}</a>{% else %}—{% endif %}<div class="small muted">{{ h.company }}</div></td>
+          <td class="wrap-long">{{ h.subject }}</td>
+          <td>{% if h.channel == 'server' %}<span class="badge {{ 'b-green' if h.status == 'sent' else 'b-red' }}">{{ 'Sent' if h.status == 'sent' else 'Failed' }}</span>{% else %}<span class="badge b-grey">Opened in {{ 'Gmail' if h.channel == 'gmail' else 'mail app' }}</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <p class="muted mb0">No outreach yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

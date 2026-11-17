@@ -764,7 +764,7 @@ def test_migration_0004_backfills_single_user_data_to_admin(anyurl):
                (now,))
         db.run("INSERT INTO ai_usage(provider, model, purpose, ok, at) VALUES ('openai', 'm', 'p', 1, ?)", (now,))
 
-        assert db.migrate() == ["0004_multiuser"]
+        assert db.migrate() == ["0004_multiuser", "0005_outreach"]
 
         u = db.one("SELECT * FROM users WHERE id=?", (uid,))
         assert u["role"] == "admin" and u["status"] == "approved" and u["approved_at"] == now

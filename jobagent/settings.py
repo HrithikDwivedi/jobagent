@@ -106,6 +106,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "headless": True,
         "accept_privacy_notices": False,    # tick REQUIRED privacy/data-processing consent boxes (legal ack)
     },
+    # Reusable answers to application-form questions ([{question, answer}]); auto-apply uses them for any form that
+    # asks the same (or a near-identical) question. Filled from Settings -> Screening answers.
+    "answer_library": [],
     "resume_style": {
         "company_type": "auto",             # auto | big_tech | enterprise | startup
         "spelling": "auto",                 # auto (by country) | uk | us
@@ -333,6 +336,23 @@ def validate(key: str, value: Any) -> Any:
         return {"enabled": bool(value.get("enabled", False)), "time": t, "days": days}
     if key == "candidate":
         return _validate_candidate(value)
+    if key == "answer_library":
+        if not isinstance(value, list):
+            raise SettingsError("answer_library must be a list")
+        out, seen = [], set()
+        for item in value[:300]:
+            if not isinstance(item, dict):
+                raise SettingsError("answer_library items must be objects")
+            q = " ".join(str(item.get("question", "")).split())[:300]
+            a = str(item.get("answer", "")).strip()[:2000]
+            if not q or not a:
+                continue
+            k = q.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append({"question": q, "answer": a})
+        return out
     raise SettingsError(f"No validator for '{key}'")  # pragma: no cover
 
 

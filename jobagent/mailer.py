@@ -32,6 +32,7 @@ class Message:
     text: str
     kind: str = "general"
     related_user_id: int | None = None
+    reply_to: str | None = None
     # substrings (e.g. signed links) replaced by "[link removed]" in the stored outbox copy
     redact: list[str] = field(default_factory=list)
 
@@ -61,8 +62,10 @@ class ResendProvider(Provider):
 
     def send(self, msg: Message, sender: str) -> None:
         try:
-            r = self._client.post(self.URL, json={"from": sender, "to": [msg.to], "subject": msg.subject,
-                                                  "text": msg.text},
+            payload = {"from": sender, "to": [msg.to], "subject": msg.subject, "text": msg.text}
+            if msg.reply_to:
+                payload["reply_to"] = msg.reply_to
+            r = self._client.post(self.URL, json=payload,
                                   headers={"Authorization": f"Bearer {self._key}"})
         except httpx.HTTPError as e:
             raise MailError(f"Resend unreachable ({type(e).__name__})") from None
@@ -87,6 +90,8 @@ class SMTPProvider(Provider):
     def send(self, msg: Message, sender: str) -> None:
         em = EmailMessage()
         em["From"], em["To"], em["Subject"] = sender, msg.to, msg.subject
+        if msg.reply_to:
+            em["Reply-To"] = msg.reply_to
         em.set_content(msg.text)
         ctx = ssl.create_default_context()
         try:

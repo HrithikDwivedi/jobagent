@@ -49,7 +49,16 @@ CAPTCHAS = {
                  '<div class="h-captcha" data-sitekey="10000000-ffff-ffff-ffff-000000000001"></div>'),
     "turnstile": ('<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>',
                   '<div class="cf-turnstile" data-sitekey="1x00000000000000000000AA"></div>'),
+    # VISIBLE challenges a person would have to complete
+    "recaptcha_checkbox": ("", '<iframe src="https://www.google.com/recaptcha/api2/anchor?k=x&size=normal" '
+                               'width="304" height="78" title="reCAPTCHA"></iframe>'),
+    "recaptcha_image": ("", '<iframe src="https://www.google.com/recaptcha/api2/bframe?k=x" width="400" '
+                            'height="580" title="recaptcha challenge"></iframe>'),
+    "hcaptcha_widget": ("", '<div class="h-captcha" data-sitekey="10000000-ffff-ffff-ffff-000000000001" '
+                            'style="width:303px;height:78px"></div>'),
 }
+INVISIBLE = ["recaptcha_script", "recaptcha_iframe", "hcaptcha", "turnstile"]
+VISIBLE = ["recaptcha_checkbox", "recaptcha_image", "hcaptcha_widget"]
 
 CONFIRM_GH = ('<html><body><div id="application_confirmation"><h1>Thank you for applying.</h1><p>Your application '
               'has been received and our team will review it.</p></div></body></html>')
@@ -503,7 +512,18 @@ def test_unknown_required_question_is_handed_back(db, tmp_path, browser, server)
     assert apps.approval_gate_checks(db, apps._get_app(db, a["id"], ADMIN), settings_mod.get_all(db, ADMIN)) == []
 
 
-@pytest.mark.parametrize("kind", ["recaptcha_script", "recaptcha_iframe", "hcaptcha", "turnstile"])
+@pytest.mark.parametrize("kind", INVISIBLE)
+def test_invisible_captcha_does_not_block_submission(db, tmp_path, browser, server, kind):
+    # score-based / unrendered integrations ask nothing of a person: the form is submitted normally
+    enable(db)
+    a = make_app(db)
+    gh_serve(server, a, captcha=kind)
+    res = run(db, tmp_path, browser, server)
+    assert res["stats"]["submitted_confirmed"] == 1, res
+    assert status(db, a["id"]) == "submitted" and len(server.posts) == 1
+
+
+@pytest.mark.parametrize("kind", VISIBLE)
 def test_captcha_headless_is_handed_back(db, tmp_path, browser, server, kind):
     enable(db)
     a = make_app(db)
@@ -518,7 +538,7 @@ def test_captcha_headed_fills_and_leaves_for_user(db, tmp_path, browser, server)
     enable(db)
     a = make_app(db, ats="lever")
     p = path_of(a["url"])
-    server.page(p, render("lever", action=p, captcha="hcaptcha"))
+    server.page(p, render("lever", action=p, captcha="hcaptcha_widget"))
     server.on_post(p, 302, "", {"Location": p + "/thanks"})
     res = run(db, tmp_path, browser, server, headless=False)       # logical "headed" (browser itself is headless)
     assert res["stats"]["fill_only_left_open"] == 1, res
@@ -695,3 +715,39 @@ def test_user_approval_is_not_used_by_worker(db, tmp_path, browser, server):
     gh_serve(server, a)
     res = run(db, tmp_path, browser, server)
     assert res["stats"]["considered"] == 0 and status(db, a["id"]) == "ready_to_apply" and server.gets == []
+
+
+def test_challenge_after_submit_headless_is_not_solved(db, tmp_path, browser, server):
+    # invisible reCAPTCHA escalates to an image challenge after the click: nothing was sent, never solved,
+    # recorded as a before-submit failure so the user can retry or apply manually
+    enable(db)
+    a = make_app(db)
+    challenge = ('<html><body><p>One more step</p><iframe src="https://www.google.com/recaptcha/api2/bframe?k=x" '
+                 'width="400" height="580"></iframe></body></html>')
+    gh_serve(server, a, captcha="recaptcha_script", post=(200, challenge, {"Content-Type": "text/html"}))
+    res = run(db, tmp_path, browser, server)
+    assert res["stats"]["failed"] == 1 and res["stats"]["submitted_confirmed"] == 0, res
+    assert "human verification" in res["results"][0]["reason"]
+    assert status(db, a["id"]) == "submission_failed"
+
+
+def test_answer_library_unblocks_handed_back_application(db, tmp_path, browser, server):
+    # 1) handed back for an unknown required question  2) the user answers it once in Screening Answers
+    # 3) the application is re-queued and the next run submits it using the saved answer
+    from jobagent import answers as answers_mod
+    enable(db)
+    a = make_app(db)
+    gh_serve(server, a, extra=UNKNOWN_Q)
+    res = run(db, tmp_path, browser, server)
+    assert res["stats"]["handed_back"] == 1, res
+    ov = answers_mod.overview(db, user_id=ADMIN)
+    assert [p["question"] for p in ov["pending"]] == ["Have you previously worked at Acme?"]
+    assert ov["pending"][0]["apps"] == [a["id"]]
+    out = answers_mod.save(db, user_id=ADMIN, actor="user:test",
+                           items=[{"question": "Have you previously worked at Acme?", "answer": "No"}])
+    assert out == {"saved": 1, "requeued": 1}
+    assert answers_mod.overview(db, user_id=ADMIN)["pending"] == []
+    res2 = run(db, tmp_path, browser, server)
+    assert res2["stats"]["submitted_confirmed"] == 1, res2
+    assert status(db, a["id"]) == "submitted"
+    assert len(server.posts) == 1

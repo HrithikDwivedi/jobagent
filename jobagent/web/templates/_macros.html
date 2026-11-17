@@ -163,6 +163,7 @@
       <input type="hidden" name="back" value="{{ back }}">
       <button type="submit" class="btn" data-loading-text="Re-checking…">{{ ico('refresh') }} Re-check listing</button>
     </form>
+    {% if job.status == 'open' %}<a class="btn" href="/recruiters?{{ {'q': job.employer, 'min_score': 0, 'show': 'all'}|urlencode }}">{{ ico('mail') }} Contact recruiters</a>{% endif %}
   </div>
   <p class="muted small cta-note">{{ ico('shield-check') }}<span>“Apply with agent” re-checks the listing and prepares a tailored resume, cover letter and answers for your review. Nothing is sent without your explicit approval, and you submit on the employer’s own site.</span></p>
 

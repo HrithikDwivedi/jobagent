@@ -29,6 +29,8 @@ from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from .. import agent as agent_mod
+from .. import answers as answers_mod
+from .. import outreach
 from .. import applications as apps
 from .. import settings as settings_mod
 from .. import users as users_mod
@@ -37,6 +39,7 @@ from ..config import AppConfig, acceptable_base_url, load_config, validate_confi
 from ..db import Database, DatabaseError, audit, dumps, iso, loads, verify_audit_chain
 from ..http import HttpClient
 from ..mailer import Mailer, Message, make_mailer
+from ..mailer import valid_email as mailer_valid_email
 from ..resume import store as resume_store
 from ..resume.parser import ResumeError
 from ..resume.variants import ROLE_FAMILIES, render_text
@@ -796,6 +799,171 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
                    "ON CONFLICT(user_id, skill) DO UPDATE SET status=excluded.status, notes=excluded.notes, "
                    "updated_at=excluded.updated_at", (uid(request), skill, status, (data.get("notes") or "")[:1000], iso()))
         return redirect("/prep", "ok", f"Progress for {skill} saved.")
+
+    # ------------------------------------------------------------------ screening answers (auto-apply to-do list)
+    @app.get("/answers", response_class=HTMLResponse)
+    def answers_page(request: Request):
+        db = get_db(request)
+        me = uid(request)
+        ov = answers_mod.overview(db, user_id=me)
+        pol = settings_mod.get_all(db, me)["auto_apply"]
+        return render(request, "answers.html", {"ov": ov, "pol": pol})
+
+    @app.post("/answers")
+    async def answers_save(request: Request):
+        data = await form(request)
+        qs, ans = data.getlist("question"), data.getlist("answer")
+        items = [{"question": q[:300], "answer": a[:2000]} for q, a in zip(qs, ans) if q.strip() and a.strip()]
+        if not items:
+            return redirect("/answers", "error", "Type an answer before saving.")
+        res = answers_mod.save(get_db(request), user_id=uid(request), actor=actor(request), items=items)
+        msg = f"Saved {res['saved']} answer(s)."
+        if res["requeued"]:
+            msg += f" {res['requeued']} handed-back application(s) will be retried on the next auto-apply run."
+        return redirect("/answers", "ok", msg)
+
+    @app.post("/answers/delete")
+    async def answers_delete(request: Request):
+        data = await form(request)
+        ok = answers_mod.delete(get_db(request), user_id=uid(request), actor=actor(request),
+                                question=(data.get("question") or "")[:300])
+        return redirect("/answers#library", "ok" if ok else "error", "Answer removed." if ok else "Answer not found.")
+
+    @app.post("/answers/consent")
+    async def answers_consent(request: Request):
+        data = await form(request)
+        db = get_db(request)
+        me = uid(request)
+        pol = dict(settings_mod.get_all(db, me)["auto_apply"])
+        pol["accept_privacy_notices"] = data.get("accept") == "1"
+        settings_mod.set_value(db, "auto_apply", pol, actor(request), user_id=me)
+        n = answers_mod.requeue_handed_back(db, user_id=me, actor=actor(request)) if pol["accept_privacy_notices"] else 0
+        return redirect("/answers", "ok", ("Required privacy/data-processing boxes will be ticked for you."
+                                           + (f" {n} application(s) re-queued." if n else ""))
+                        if pol["accept_privacy_notices"] else "Privacy boxes will be left for you to tick.")
+
+    # ------------------------------------------------------------------ recruiter outreach
+    def _current_title(db: Database, me: int) -> str | None:
+        r = resume_store.canonical(db, user_id=me)
+        exp = ((r or {}).get("structured") or {}).get("experience") or []
+        return (exp[0].get("title") if exp and isinstance(exp[0], dict) else None) or None
+
+    @app.get("/recruiters", response_class=HTMLResponse)
+    def recruiters_page(request: Request):
+        db = get_db(request)
+        me = uid(request)
+        q = (request.query_params.get("q") or "").strip()[:80]
+        try:
+            min_score = max(0, min(100, int(request.query_params.get("min_score") or 60)))
+        except ValueError:
+            min_score = 60
+        show = request.query_params.get("show") or "with_contacts"
+        board = outreach.hiring_board(db, user_id=me, min_score=min_score, company=q)
+        with_contacts = [b for b in board if b["contacts"]]
+        rows = with_contacts if show != "all" else board
+        return render(request, "recruiters.html", {
+            "rows": rows[:150], "total": len(board), "with_contacts": len(with_contacts), "q": q,
+            "min_score": min_score, "show": show, "history": outreach.history(db, user_id=me, limit=30),
+            "server_mail": app.state.mailer.provider.name != "console"})
+
+    @app.post("/recruiters/contacts")
+    async def recruiters_add(request: Request):
+        data = await form(request)
+        db = get_db(request)
+        job_id = data.get("job_id")
+        job_id = int(job_id) if job_id and str(job_id).isdigit() else None
+        if job_id and not db.scalar("SELECT 1 FROM jobs WHERE id=?", (job_id,)):
+            job_id = None
+        try:
+            outreach.add_contact(db, user_id=uid(request), company=data.get("company") or "",
+                                 email=data.get("email") or "", name=data.get("name") or "",
+                                 role_title=data.get("role_title") or "", profile_url=data.get("profile_url") or "",
+                                 job_id=job_id, notes=data.get("notes") or "")
+        except ValueError as e:
+            return redirect(safe_next(data.get("next") or "/recruiters"), "error", str(e))
+        return redirect(safe_next(data.get("next") or "/recruiters"), "ok", "Contact saved.")
+
+    @app.post("/recruiters/contacts/{cid}/delete")
+    async def recruiters_delete(request: Request, cid: int):
+        await form(request)
+        ok = outreach.delete_contact(get_db(request), user_id=uid(request), contact_id=cid)
+        return redirect("/recruiters", "ok" if ok else "error", "Contact removed." if ok else "Contact not found.")
+
+    @app.get("/recruiters/compose", response_class=HTMLResponse)
+    def recruiters_compose(request: Request):
+        db = get_db(request)
+        me = uid(request)
+        try:
+            job_id = int(request.query_params.get("job") or 0)
+        except ValueError:
+            job_id = 0
+        job = outreach.job_for(db, job_id, user_id=me) if job_id else None
+        if not job:
+            return not_found(request, "That job is not open any more.")
+        to = (request.query_params.get("to") or "").strip().lower()[:254]
+        name = (request.query_params.get("name") or "").strip()[:120]
+        s = settings_mod.get_all(db, me)
+        subject, body = outreach.draft(job, s["candidate"], name or None, _current_title(db, me))
+        return render(request, "recruiter_compose.html", {
+            "job": job, "to": to, "to_name": name, "subject": subject, "body": body,
+            "previous": outreach.previous(db, user_id=me, job_id=job_id, to_addr=to) if to else 0,
+            "server_mail": app.state.mailer.provider.name != "console", "candidate": s["candidate"],
+            "sent_today": outreach.server_sent_today(db, user_id=me), "cap": outreach.SERVER_DAILY_CAP})
+
+    @app.post("/recruiters/send")
+    async def recruiters_send(request: Request):
+        data = await form(request)
+        db = get_db(request)
+        me = uid(request)
+        try:
+            job_id = int(data.get("job_id") or 0)
+        except ValueError:
+            job_id = 0
+        job = outreach.job_for(db, job_id, user_id=me) if job_id else None
+        to = (data.get("to") or "").strip().lower()
+        to_name = (data.get("to_name") or "").strip()[:120]
+        subject = (data.get("subject") or "").strip()[:200]
+        body = (data.get("body") or "").replace("\r\n", "\n").strip()[:8000]
+        channel = data.get("channel")
+        back = "/recruiters/compose?" + urlencode({"job": job_id, "to": to, "name": to_name})
+        if not job:
+            return redirect("/recruiters", "error", "That job is not open any more.")
+        if not mailer_valid_email(to) or not subject or not body or channel not in ("gmail", "mail_app", "server"):
+            return redirect(back, "error", "Add a valid recipient, a subject and a message.")
+        if outreach.previous(db, user_id=me, job_id=job_id, to_addr=to) and data.get("confirm_repeat") != "1":
+            return redirect(back, "error", "You already contacted this person about this job. Tick the "
+                                           "confirmation box to send another message.")
+        common = dict(user_id=me, job_id=job_id, to_addr=to, to_name=to_name, company=job["employer"],
+                      subject=subject, body=body)
+        if channel == "server":
+            mailer = app.state.mailer
+            if mailer.provider.name == "console":
+                return redirect(back, "error", "Server email is not configured; use Gmail or your mail app.")
+            if outreach.server_sent_today(db, user_id=me) >= outreach.SERVER_DAILY_CAP:
+                return redirect(back, "error", f"Daily limit of {outreach.SERVER_DAILY_CAP} emails reached.")
+            reply_to = settings_mod.get_all(db, me)["candidate"].get("email")
+            res = mailer.send(db, Message(to=to, subject=subject, text=body, kind="outreach", related_user_id=me,
+                                          reply_to=reply_to if mailer_valid_email(reply_to) else None))
+            ok = res["status"] == "sent"
+            outreach.log(db, channel="server", status="sent" if ok else "failed", error=res.get("error"), **common)
+            audit(db, actor=actor(request), entity="job", entity_id=job_id, action="outreach_sent" if ok else
+                  "outreach_failed", detail={"to_domain": to.split("@")[-1], "channel": "server"})
+            return redirect("/recruiters", "ok" if ok else "error",
+                            f"Email sent to {to}." if ok else f"Email could not be sent: {res.get('error')}")
+        outreach.log(db, channel=channel, status="opened", **common)
+        audit(db, actor=actor(request), entity="job", entity_id=job_id, action="outreach_drafted",
+              detail={"to_domain": to.split("@")[-1], "channel": channel})
+        if channel == "gmail":
+            return RedirectResponse(outreach.gmail_url(to, subject, body), status_code=303)
+        # mail app: a redirect to mailto: is unreliable across browsers, so show the edited draft with a link the
+        # person clicks (the click is what lets the browser hand over to the mail app)
+        s = settings_mod.get_all(db, me)
+        return render(request, "recruiter_compose.html", {
+            "job": job, "to": to, "to_name": to_name, "subject": subject, "body": body,
+            "previous": outreach.previous(db, user_id=me, job_id=job_id, to_addr=to),
+            "server_mail": app.state.mailer.provider.name != "console", "candidate": s["candidate"],
+            "sent_today": outreach.server_sent_today(db, user_id=me), "cap": outreach.SERVER_DAILY_CAP,
+            "mailto": outreach.mailto_url(to, subject, body)})
 
     # ------------------------------------------------------------------ resume studio (private)
     @app.get("/studio", response_class=HTMLResponse)

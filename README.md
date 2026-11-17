@@ -195,6 +195,9 @@ CLI equivalents: `review`, `approve <id>` (shows the exact package and asks you 
 A database lock prevents overlapping runs; runs are idempotent.
 
 ### Tests
+
+`scripts/ui_check.py` opens every page at five viewport widths in Chromium (seeded demo data). It fails on
+horizontal overflow, overlapping layout, content spilling out of cards and JavaScript errors. Run it after UI changes.
 ```powershell
 .venv\Scripts\python -m pytest -q          # or: python -m jobagent test
 .venv\Scripts\python scripts\make_test_report.py   # writes TEST_REPORT.md from reports\junit.xml
@@ -299,8 +302,26 @@ Policy approvals have the same fingerprint, expiry and single-use rules as yours
 hCaptcha, Cloudflare Turnstile, "verify you are human" pages). Headless: the application is handed back to you.
 Headed (`--headed`), or with mode `fill_only`: the worker fills the form and leaves the browser open. You review it,
 click Submit yourself and then record the outcome in the dashboard. The application is left in *Application
-started*. **In practice most real Greenhouse, Lever and Ashby forms load invisible reCAPTCHA or hCaptcha.** So the
-fully automatic path rarely submits, and the headed fill-for-you path is the useful one.
+started*.
+
+**CAPTCHAs.** Most real Greenhouse, Lever and Ashby forms load an *invisible*, score-based reCAPTCHA or hCaptcha.
+That asks nothing of the person submitting, so it does not block auto-apply. Only a *visible* challenge (a checkbox
+widget, an image puzzle or a "checking your browser" page) blocks, before or after Submit. It is never solved:
+headless runs hand the application back (recorded as "nothing sent", retryable). Headed runs wait for you to
+complete it in the open browser window.
+
+**Screening Answers** (`/answers`). Every form the worker could not complete is listed with the reason. Required
+questions without an answer are collected into one to-do list. Answer each once and the answer is reused on every
+form that asks the same question. The handed-back applications are then retried on the next run. The same page has
+the switch for ticking *required* privacy/data-processing acknowledgements (optional ones are never ticked).
+
+**Recruiters** (`/recruiters`). For your best-matched open jobs, this lists the hiring contacts the employer
+published in the job post, plus contacts you add yourself. Each job has a LinkedIn people-search link you open
+yourself; nothing is scraped and no addresses are guessed. "Write email" drafts a short message specific to the
+role (your matched skills, current title and contact details), which you edit. You then open it in Gmail or your
+mail app, so it is sent from your own address. When SMTP/Resend is configured it can also be sent from JobAgent
+(Reply-To is your email, capped at 25 a day). Every outreach is logged, and writing to the same person about the
+same job again needs a confirmation.
 
 **Where it runs.**
 * Locally: `pip install -r requirements-worker.txt`, `python -m playwright install chromium`, then

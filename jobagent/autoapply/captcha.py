@@ -1,5 +1,8 @@
-"""Bot-protection detection. The worker NEVER tries to solve or bypass a challenge: when one is present it
-either hands the application back to the user or (headed) fills the form and lets the user submit."""
+"""Bot-protection detection. The worker NEVER tries to solve or bypass a challenge.
+
+detect_captcha() lists every integration on the page (informational). interactive_challenge() lists only challenges
+a person would have to complete (visible widget, puzzle frame, interstitial); those hand the application back to the
+user, or (headed) leave the filled form for the user. Invisible, score-based checks do not block."""
 from __future__ import annotations
 
 import re
@@ -50,6 +53,52 @@ _JS = r"""() => {
     kinds.add('challenge');
   return Array.from(kinds);
 }"""
+
+
+# A challenge the PERSON must interact with: a rendered checkbox widget, an image/puzzle frame, an interstitial.
+# Invisible / score-based integrations (reCAPTCHA v3 or invisible v2, invisible hCaptcha, an unrendered container)
+# ask nothing of the person submitting, so they do not block automation. Nothing here ever solves a challenge.
+_INTERACTIVE_JS = r"""() => {
+  const kinds = new Set();
+  const shown = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 30 || r.height < 30) return false;
+    const s = getComputedStyle(el);
+    return s.display !== 'none' && s.visibility !== 'hidden' && parseFloat(s.opacity || '1') > 0.05;
+  };
+  document.querySelectorAll('iframe').forEach((f) => {
+    const src = f.src || f.getAttribute('data-src') || '';
+    if (!src || !shown(f)) return;
+    if (/recaptcha\/(api2|enterprise)\/bframe/i.test(src)) kinds.add('recaptcha');               // image challenge
+    else if (/recaptcha\/(api2|enterprise)\/anchor/i.test(src) && !/[?&]size=invisible/i.test(src)) kinds.add('recaptcha');
+    else if (/hcaptcha\.com/i.test(src) && !/[#?&]size=invisible/i.test(src)) kinds.add('hcaptcha');
+    else if (/challenges\.cloudflare\.com/i.test(src)) kinds.add('turnstile');
+    else if (/arkoselabs|funcaptcha|captcha-delivery\.com|px-captcha/i.test(src)) kinds.add('challenge');
+  });
+  document.querySelectorAll('.g-recaptcha, .h-captcha, .cf-turnstile').forEach((el) => {
+    if ((el.getAttribute('data-size') || '').toLowerCase() === 'invisible' || !shown(el)) return;
+    const frames = Array.from(el.querySelectorAll('iframe'));
+    if (frames.length && frames.every((f) => /[?&#]size=invisible/i.test(f.src || ''))) return;  // invisible widget
+    kinds.add(el.classList.contains('h-captcha') ? 'hcaptcha' : el.classList.contains('cf-turnstile') ? 'turnstile' : 'recaptcha');
+  });
+  if (document.querySelector('#px-captcha, [id^="px-captcha"]')) kinds.add('challenge');
+  const text = ((document.title || '') + ' ' + (document.body ? document.body.innerText.slice(0, 4000) : ''));
+  if (/verify (that )?you are (a )?human|checking (if the site connection is secure|your browser)|are you a robot|press (&|and) hold|just a moment\.\.\./i.test(text))
+    kinds.add('challenge');
+  return Array.from(kinds);
+}"""
+
+
+def interactive_challenge(page) -> list[str]:
+    """Visible bot challenges that need a person (see _INTERACTIVE_JS). Evaluation errors count as 'unknown'."""
+    kinds: set[str] = set()
+    for frame in page.frames:
+        try:
+            kinds.update(frame.evaluate(_INTERACTIVE_JS))
+        except Exception:
+            if frame is page.main_frame:
+                kinds.add("unknown")
+    return sorted(kinds)
 
 
 def detect_captcha(page) -> list[str]:

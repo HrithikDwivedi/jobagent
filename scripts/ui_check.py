@@ -1,0 +1,188 @@
+"""Browser layout check: seeds a throwaway SQLite DB, serves the dashboard and opens every main page at several
+viewport widths in Chromium. Fails on horizontal page overflow, JavaScript errors, the job list overlapping the
+detail pane, and card content spilling outside its card.
+
+    .venv\\Scripts\\python.exe scripts\\ui_check.py [--shots DIR]
+"""
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+import tempfile
+import threading
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import uvicorn  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from playwright.sync_api import sync_playwright  # noqa: E402
+
+from jobagent import agent  # noqa: E402
+from jobagent import settings as settings_mod  # noqa: E402
+from jobagent.config import load_config  # noqa: E402
+from jobagent.db import Database, iso  # noqa: E402
+from jobagent.ingest import upsert_raw  # noqa: E402
+from jobagent.matching import candidate_profile  # noqa: E402
+from jobagent.resume import store as resume_store  # noqa: E402
+from jobagent.sources import RawJob  # noqa: E402
+from jobagent.web.app import create_app  # noqa: E402
+
+RESUME = Path(r"C:\Users\you\OneDrive\Desktop\hrithik\Hrithik_Dwivedi_Resume_India.pdf")
+USER, PASSWORD = "ui.check", "Ui-Check-Passw0rd!x"
+PORT = 8797
+WIDTHS = [390, 768, 1024, 1280, 1536]
+JOBS = [
+    ("Graduate Applied AI Engineer", "Resonance", "London, United Kingdom",
+     "Python, PyTorch and LLM tooling. Graduate role. Visa sponsorship available.\nContact: talent@resonance.example"),
+    ("Custom Software Engineering Associate", "Accenture", "Mumbai, India", "Java, .NET, SQL. 0-2 years."),
+    ("IN_Associate_ AI Engineer_GCC_Advisory_Bangalore_Supercalifragilistic_Long_Token", "PwC",
+     "Bengaluru, India", "Python, Azure OpenAI, LangChain. Recruiter: Priya Sharma (priya.sharma@pwc.example)."),
+    ("Backend Engineer (Python) — Payments Platform, Senior-ish but open to strong mid-level candidates",
+     "Thames Data Ltd", "London, United Kingdom", "Python, FastAPI, SQL, Docker. We can sponsor Skilled Worker visas."),
+    (".NET Software Engineer", "Acme Payments Ltd", "Dublin, Ireland",
+     "C#, .NET, ASP.NET Core, SQL on AWS. 2+ years. Visa sponsorship is available. careers@acme.example"),
+    ("Platform Engineer", "Northwind Cloud", "Toronto, Canada", "Go, Kubernetes, Terraform. 3+ years."),
+    # long multi-location strings + long employer names (these once pushed cards under the detail pane)
+    ("Software Engineer", "PricewaterhouseCoopers Service Delivery Center (Bangalore) Private Limited",
+     "Bengaluru, Karnataka, India; Hyderabad, Telangana, India; Pune, Maharashtra, India; Gurugram, Haryana, India",
+     "Python, SQL, cloud. 1-3 years."),
+]
+PAGES = ["/", "/jobs", "/applications", "/mnc", "/sponsorship", "/prep", "/runs", "/audit", "/settings",
+         "/recruiters", "/answers"]
+
+LAYOUT_JS = r"""() => {
+  const issues = [];
+  const de = document.documentElement;
+  if (de.scrollWidth > window.innerWidth + 1) {
+    const culprits = [];
+    document.querySelectorAll('body *').forEach((e) => {
+      const r = e.getBoundingClientRect();
+      if (r.right > window.innerWidth + 1 && !e.closest('.table-wrap, .sidebar, .pill-panel')) {
+        const p = e.parentElement && e.parentElement.getBoundingClientRect();
+        if (!p || p.right <= window.innerWidth + 1) culprits.push(`${e.tagName.toLowerCase()}.${String(e.className.baseVal ?? e.className).split(' ')[0]}`);
+      }
+    });
+    issues.push(`page scrolls horizontally (${de.scrollWidth}px > ${window.innerWidth}px) caused by: ${culprits.slice(0, 4).join(', ')}`);
+  }
+  const pane = document.querySelector('.detail-pane');
+  const vis = (el) => { const s = getComputedStyle(el); return s.display !== 'none' && s.visibility !== 'hidden'; };
+  if (pane && vis(pane)) {
+    const p = pane.getBoundingClientRect();
+    document.querySelectorAll('.job-card').forEach((c, i) => {
+      const r = c.getBoundingClientRect();
+      if (r.right > p.left + 1 && r.left < p.right && r.bottom > p.top && r.top < p.bottom)
+        issues.push(`job card #${i + 1} overlaps the detail pane (${Math.round(r.right)} > ${Math.round(p.left)})`);
+    });
+  }
+  document.querySelectorAll('.job-card, .card, .kpi, .app-card, .queue-card').forEach((c, i) => {
+    if (!vis(c)) return;
+    const r = c.getBoundingClientRect();
+    if (r.width === 0) return;
+    c.querySelectorAll('*').forEach((k) => {
+      if (!vis(k) || k.closest('.table-wrap, .pill-panel, pre, .description, .kanban, .diff, details:not([open])')) return;
+      const q = k.getBoundingClientRect();
+      if (q.width && q.right > r.right + 2) {
+        const label = (k.className && k.className.baseVal === undefined ? k.className : k.tagName) + '';
+        issues.push(`${c.className.split(' ')[0]} #${i + 1}: "${label.slice(0, 40)}" overflows by ${Math.round(q.right - r.right)}px`);
+      }
+    });
+  });
+  return Array.from(new Set(issues)).slice(0, 12);
+}"""
+
+
+def seed(cfg) -> None:
+    app = create_app(cfg)
+    with TestClient(app) as c:
+        html = c.get("/setup").text
+        tok = re.search(r'name="pre_csrf" value="([^"]+)"', html).group(1)
+        r = c.post("/setup", data={"pre_csrf": tok, "username": USER, "password": PASSWORD, "password2": PASSWORD},
+                   follow_redirects=False)
+        assert r.status_code == 303, r.text[:300]
+    db = Database(cfg.database_url)
+    try:
+        s = settings_mod.get_all(db, 1)
+        ids = []
+        for n, (title, comp, loc, desc) in enumerate(JOBS):
+            raw = RawJob(source="greenhouse", source_job_id=f"ui-{n}", title=title, company=comp, location_raw=loc,
+                         url=f"https://boards.greenhouse.io/x/jobs/{n}", apply_url=f"https://boards.greenhouse.io/x/jobs/{n}",
+                         description_text=desc, published_at=iso(), employment_type="full_time")
+            _, jid, _ = upsert_raw(db, raw, s)
+            if jid:
+                ids.append(jid)
+        with db.transaction():
+            db.run("UPDATE jobs SET is_sample=0, last_verified_at=?", (iso(),))
+        if RESUME.exists():
+            resume = resume_store.import_original(db, str(RESUME), user_id=1)
+            profile = candidate_profile(resume["structured"], resume["analysis"], s["candidate"])
+            pv = agent.profile_version(resume, s)
+            for jid in ids:
+                agent.score_and_store(db, jid, profile, s, pv, user_id=1)
+            for jid in ids[:3]:
+                agent.prepare_application(db, jid, f"user:{USER}", profile, s, None, user_id=1)
+    finally:
+        db.close()
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--shots", help="save a screenshot of every page/width into this folder")
+    args = ap.parse_args()
+    shots = Path(args.shots) if args.shots else None
+    if shots:
+        shots.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="ja-ui-")
+    cfg = load_config()
+    cfg.database_url = f"sqlite:///{Path(tmp, 't.db').as_posix()}"
+    cfg.secret_key = "u" * 40
+    cfg.resend_api_key, cfg.smtp_host = None, None
+    cfg.public_url = f"http://127.0.0.1:{PORT}"
+    seed(cfg)
+    server = uvicorn.Server(uvicorn.Config(create_app(cfg), host="127.0.0.1", port=PORT, log_level="warning"))
+    threading.Thread(target=server.run, daemon=True).start()
+    time.sleep(2)
+    base = f"http://127.0.0.1:{PORT}"
+    failures: list[str] = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        for width in WIDTHS:
+            ctx = browser.new_context(viewport={"width": width, "height": 900}, reduced_motion="reduce")
+            page = ctx.new_page()
+            errors: list[str] = []
+            page.on("pageerror", lambda e: errors.append(f"JS error: {e}"))
+            page.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
+            page.goto(base + "/login")
+            page.fill("input[name=username]", USER)
+            page.fill("input[name=password]", PASSWORD)
+            page.click("button[type=submit]")
+            page.wait_for_load_state("networkidle")
+            jobs_with_pane = ["/jobs?job=1", "/jobs?job=3"]
+            for path in PAGES + jobs_with_pane:
+                errors.clear()
+                resp = page.goto(base + path)
+                page.wait_for_load_state("networkidle")
+                if resp is None or resp.status >= 400:
+                    failures.append(f"[{width}px] {path}: HTTP {resp.status if resp else '?'}")
+                    continue
+                issues = page.evaluate(LAYOUT_JS) + errors
+                for i in issues:
+                    failures.append(f"[{width}px] {path}: {i}")
+                if shots:
+                    name = re.sub(r"[^a-z0-9]+", "_", path.strip("/") or "overview")
+                    page.screenshot(path=str(shots / f"{name}_{width}.png"), full_page=False)
+            ctx.close()
+        browser.close()
+    server.should_exit = True
+    if failures:
+        print("\n".join(failures))
+        print(f"\n{len(failures)} UI issue(s).")
+        return 1
+    print(f"UI check passed: {len(PAGES) + 2} pages x {len(WIDTHS)} widths.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

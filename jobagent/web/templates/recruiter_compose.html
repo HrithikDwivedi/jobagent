@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Write to Recruiter{% endblock %}
+{% block content %}
+<a class="back-link" href="/recruiters">{{ m.ico('arrow-left') }} Recruiters</a>
+<div class="page-head">
+  <div>
+    <h1>Write about {{ job.title }}</h1>
+    <p>{{ job.employer }}{% if job.location_raw %} · {{ job.location_raw }}{% endif %}. Edit the draft, then open it in your mailbox. It is sent from your own address, so replies come straight to you.</p>
+  </div>
+  <a class="btn" href="/jobs/{{ job.id }}">View job</a>
+</div>
+
+{% if mailto %}
+  <div class="alert alert-ok" role="status"><strong>Draft ready.</strong> <a class="btn btn-sm btn-primary" href="{{ mailto }}">{{ m.ico('send') }} Open in mail app</a>
+    <span class="small muted">If nothing opens, no mail app is set up on this device: use Open in Gmail, or copy the text below.</span></div>
+{% elif previous %}
+  <div class="alert alert-warn" role="note"><strong>You already wrote to this person about this job</strong> ({{ previous }} time{{ 's' if previous != 1 }}). A short, polite follow-up a week later is fine; more than that rarely helps.</div>
+{% endif %}
+{% if not candidate.full_name or not candidate.email %}
+  <div class="alert alert-info" role="note">Add your name, email, phone and LinkedIn in <a href="/settings#candidate">Settings → Candidate</a> so the signature is filled in.</div>
+{% endif %}
+
+<form method="post" action="/recruiters/send" class="card container-narrow" data-no-loading>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="job_id" value="{{ job.id }}">
+  <div class="form-grid">
+    <div class="field"><label for="to">To</label><input type="email" id="to" name="to" value="{{ to }}" maxlength="254" required></div>
+    <div class="field"><label for="to_name">Their name</label><input type="text" id="to_name" name="to_name" value="{{ to_name }}" maxlength="120"></div>
+  </div>
+  <div class="field"><label for="subject">Subject</label><input type="text" id="subject" name="subject" value="{{ subject }}" maxlength="200" required></div>
+  <div class="field"><label for="body">Message</label><textarea id="body" name="body" class="tall" maxlength="8000" required>{{ body }}</textarea>
+    <span class="hint">Keep it short and specific to this role. Attach your tailored resume from the application in your mail app if you like.</span></div>
+  {% if previous and not mailto %}
+    <label class="check"><input type="checkbox" name="confirm_repeat" value="1"> I want to write to this person again about this job</label>
+  {% endif %}
+  <div class="form-actions mt">
+    <button type="submit" name="channel" value="gmail" class="btn btn-primary" formtarget="_blank">{{ m.ico('mail') }} Open in Gmail</button>
+    <button type="submit" name="channel" value="mail_app" class="btn">{{ m.ico('send') }} Open in mail app</button>
+    {% if server_mail %}
+      <button type="submit" name="channel" value="server" class="btn btn-outline"{% if sent_today >= cap %} disabled{% endif %} data-loading-text="Sending…">{{ m.ico('send') }} Send from JobAgent</button>
+      <span class="small muted">{{ sent_today }} of {{ cap }} sent today</span>
+    {% endif %}
+  </div>
+  <p class="small muted mt mb0">Each message is logged in your outreach history. Nothing is sent until you press Send in your mailbox{% if server_mail %} or use “Send from JobAgent”{% endif %}.</p>
+</form>
+{% endblock %}

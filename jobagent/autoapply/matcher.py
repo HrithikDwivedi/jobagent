@@ -1,7 +1,8 @@
 """Map application-form questions to answers the user has CONFIRMED. Never invents an answer.
 
 Sources, in order of precedence:
-  1. the application's answers_json (prepared from Settings and reviewed/edited by the user),
+  1. the application's answers_json (prepared from Settings and reviewed/edited by the user), then the
+     user's reusable screening-answer library (Settings -> Screening answers),
   2. candidate facts in Settings (name, email, phone, location, LinkedIn, work authorisation, ...),
   3. the canonical resume's most recent role (current company / title only),
   4. safe defaults that disclose nothing: the "decline to self-identify" option of VOLUNTARY EEO /
@@ -383,7 +384,10 @@ class Matcher:
                             rule="consent")
         # -- rule match (decides formatting) + user-confirmed answers_json (decides value)
         rule = next((k for k, rx in RULES if rx.search(label_norm)), "")
+        # answers saved from a hand-back use the cleaned question text, so try that form of the label too
         from_json = self._answer_from_json(label_norm)
+        if from_json is None and norm(f.question) != label_norm:
+            from_json = self._answer_from_json(norm(f.question))
         if rule == "how_heard":
             if f.kind in CHOICE_KINDS:
                 for pat in HOW_HEARD_PREFERENCE:

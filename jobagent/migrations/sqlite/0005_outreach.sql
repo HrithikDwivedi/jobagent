@@ -1,0 +1,32 @@
+-- 0005: recruiter contacts (manually added by the user; contacts printed in job posts are derived on the fly)
+-- and a per-user log of outreach emails.
+CREATE TABLE recruiter_contacts (
+    id           INTEGER PRIMARY KEY,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    job_id       INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+    company      TEXT NOT NULL,
+    name         TEXT,
+    email        TEXT NOT NULL,
+    role_title   TEXT,
+    profile_url  TEXT,
+    source       TEXT NOT NULL CHECK (source IN ('manual','job_posting')),
+    notes        TEXT,
+    created_at   TEXT NOT NULL
+);
+CREATE INDEX ix_recruiter_contacts_user ON recruiter_contacts(user_id, company);
+
+CREATE TABLE outreach_messages (
+    id          INTEGER PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    job_id      INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+    to_addr     TEXT NOT NULL,
+    to_name     TEXT,
+    company     TEXT,
+    subject     TEXT NOT NULL,
+    body_text   TEXT NOT NULL,
+    channel     TEXT NOT NULL CHECK (channel IN ('gmail','mail_app','server')),
+    status      TEXT NOT NULL CHECK (status IN ('opened','sent','failed')),
+    error       TEXT,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX ix_outreach_user ON outreach_messages(user_id, created_at);

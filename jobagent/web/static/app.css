@@ -264,6 +264,10 @@ svg.ico { width: 1.1em; height: 1.1em; flex: 0 0 auto; vertical-align: -.18em; }
 .card-title { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: .85rem; }
 .card-title h2, .card-title h3 { margin: 0; }
 .grid { display: grid; gap: 1rem; }
+/* Grid/flex children default to min-width:auto, i.e. they grow to their widest unbreakable content (a nowrap
+   location, a wide table) and spill out of their track. Let every layout child shrink; overflow is then handled
+   inside (truncation, .table-wrap scrolling). */
+.grid > *, .split > *, .studio > *, .job-list > li, .kanban > *, .queue > li, .card, .main > * { min-width: 0; }
 .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grid-auto { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
@@ -443,7 +447,7 @@ legend { font-weight: 600; font-size: .88rem; padding: 0 .35rem; color: var(--te
 .match-hint.bad { color: var(--red); }
 
 /* ------------------------------------------------------------------------------------------ tables */
-.table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+.table-wrap { position: relative; /* contain absolutely-positioned (visually-hidden) labels in cells */ width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
               scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 table { width: 100%; border-collapse: collapse; font-size: .9rem; }
 th, td { overflow-wrap: break-word; text-align: left; padding: .6rem .8rem; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -580,7 +584,14 @@ td.wrap-long { max-width: 28rem; }
                 color: var(--muted); padding-bottom: .45rem; margin-bottom: .7rem; border-bottom: 1px solid var(--border); }
 .score-head { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
 .bars { display: grid; gap: .55rem; margin-top: .85rem; }
-.bar-row { display: grid; grid-template-columns: 170px minmax(0, 1fr) 96px; gap: .7rem; align-items: center; font-size: .86rem; }
+.bar-row { display: grid; grid-template-columns: minmax(90px, 170px) minmax(60px, 1fr) auto; gap: .7rem; align-items: center; font-size: .86rem; }
+.bar-row > * { min-width: 0; }
+/* stack label/value over the meter whenever the container (not the window) is narrow, e.g. the jobs detail pane */
+.detail-pane { container-type: inline-size; }
+@container (max-width: 560px) {
+  .bar-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: .25rem; }
+  .bar-row meter { grid-column: 1 / -1; grid-row: 2; }
+}
 .bar-row meter, .bar-row progress { width: 100%; height: .5rem; }
 @media (max-width: 520px) { .bar-row { grid-template-columns: minmax(0, 1fr) 80px; } .bar-row meter { grid-column: 1 / -1; grid-row: 2; } }
 meter { -webkit-appearance: none; appearance: none; height: .5rem; border-radius: 999px; background: var(--ring-track); border: 0;
@@ -719,6 +730,16 @@ details.disclosure[open] > .disclosure-body { animation: fade-in .2s var(--ease)
 .ats-head { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: .6rem; }
 .ats-head h3 { margin: 0; }
 .error-actions { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
+
+/* recruiter outreach */
+.contact-list { list-style: none; margin: .85rem 0 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.contact-list li { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: center; justify-content: space-between;
+                   padding: .65rem .8rem; border-bottom: 1px solid var(--border); }
+.contact-list li:last-child { border-bottom: 0; }
+.contact-list .small { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin-top: .15rem; }
+.job-title-link { color: var(--text-strong); text-decoration: none; }
+.job-title-link:hover { color: var(--primary); text-decoration: underline; }
+.job-list > li.card + li.card { margin-top: 0; }
 
 /* admin approval queue */
 .queue { list-style: none; padding: 0; margin: 0; display: grid; gap: .85rem; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
