@@ -1,0 +1,25 @@
+{% extends "_auth.html" %}
+{% block title %}{{ 'Sign out' if confirm else 'Signed out' }}{% endblock %}
+{% block card %}
+  <div class="status-hero">
+    {% if confirm %}
+      <div class="status-orb" aria-hidden="true"><svg><use href="/static/icons.svg#logout"></use></svg></div>
+      <h1>Sign out of JobAgent?</h1>
+      <p class="sub">You are signed in as <strong>{{ user }}</strong>. Signing out ends your session on this device.</p>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="btn btn-primary btn-lg" data-loading-text="Signing out…">Sign out</button>
+      </form>
+      <p class="auth-switch"><a href="/">Stay signed in</a></p>
+    {% else %}
+      <div class="status-orb ok" aria-hidden="true"><svg><use href="/static/icons.svg#check-circle"></use></svg></div>
+      <h1>You’ve signed out</h1>
+      <p class="sub">Your session has ended and has been removed from the server.</p>
+      <a class="btn btn-primary btn-lg" href="/login">Sign in again</a>
+      <ul class="signout-tips">
+        <li><svg aria-hidden="true"><use href="/static/icons.svg#check"></use></svg><span>Your applications, drafts and settings are saved to your account.</span></li>
+        <li><svg aria-hidden="true"><use href="/static/icons.svg#check"></use></svg><span>On a shared computer, close the browser window too.</span></li>
+      </ul>
+    {% endif %}
+  </div>
+{% endblock %}

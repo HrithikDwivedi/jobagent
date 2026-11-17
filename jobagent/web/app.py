@@ -50,7 +50,7 @@ BASE_DIR = Path(__file__).parent
 _log = logging.getLogger("jobagent.web")
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-PUBLIC_PATHS = ("/login", "/signup", "/signup/", "/setup", "/healthz", "/static/", "/api/cron/", "/favicon.ico")
+PUBLIC_PATHS = ("/login", "/logout", "/signed-out", "/signup", "/signup/", "/setup", "/healthz", "/static/", "/api/cron/", "/favicon.ico")
 MAX_EVIDENCE_BYTES = 5 * 1024 * 1024
 EVIDENCE_TYPES = {b"\x89PNG": ("image/png", ".png"), b"\xff\xd8\xff": ("image/jpeg", ".jpg"),
                   b"%PDF": ("application/pdf", ".pdf")}
@@ -277,13 +277,30 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
 
     @app.post("/logout")
     async def logout(request: Request):
+        if not request.state.session:          # already signed out (expired session, second tab, back button)
+            resp = redirect("/signed-out")
+            resp.delete_cookie(security.SESSION_COOKIE, path="/")
+            return resp
         await form(request)
         db = get_db(request)
         security.destroy_session(db, request.cookies.get(security.SESSION_COOKIE))
         audit(db, actor=actor(request), entity="auth", entity_id=None, action="logout")
-        resp = redirect("/login", "ok", "Signed out.")
+        resp = redirect("/signed-out")
         resp.delete_cookie(security.SESSION_COOKIE, path="/")
         return resp
+
+    @app.get("/logout", response_class=HTMLResponse)
+    def logout_confirm(request: Request):
+        # Signing out changes state, so it needs the CSRF-protected POST; a plain link/GET only asks to confirm.
+        if not request.state.session:
+            return redirect("/signed-out")
+        return render(request, "signed_out.html", {"confirm": True})
+
+    @app.get("/signed-out", response_class=HTMLResponse)
+    def signed_out(request: Request):
+        if request.state.session:
+            return redirect("/")
+        return render(request, "signed_out.html", {"confirm": False})
 
     # ------------------------------------------------------------------ sign-up (public)
     @app.get("/signup")

@@ -14,37 +14,44 @@
 <body class="auth-body">
 <div class="auth-shell">
   <aside class="auth-hero" aria-label="About JobAgent">
+    <div class="hero-bg" aria-hidden="true">
+      <span class="orb o1"></span><span class="orb o2"></span><span class="orb o3"></span>
+      <svg class="hero-lines" viewBox="0 0 600 900" preserveAspectRatio="xMidYMid slice" focusable="false">
+        <defs>
+          <linearGradient id="hl-g" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#7fb4f5" stop-opacity="0"/><stop offset=".5" stop-color="#9cc6fa"/><stop offset="1" stop-color="#7fb4f5" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <g class="hl-base">
+          <path d="M-40 800 C 120 740, 240 860, 380 790 S 560 700, 660 740"/>
+          <path d="M-40 870 C 140 820, 260 900, 400 850 S 580 780, 660 810"/>
+          <path d="M-40 60 C 100 20, 240 110, 380 50 S 560 -10, 660 30"/>
+          <path d="M-40 120 C 160 90, 280 160, 420 110 S 590 60, 660 90"/>
+        </g>
+        <g class="hl-glow">
+          <path class="p1" d="M-40 800 C 120 740, 240 860, 380 790 S 560 700, 660 740"/>
+          <path class="p2" d="M-40 870 C 140 820, 260 900, 400 850 S 580 780, 660 810"/>
+          <path class="p3" d="M-40 60 C 100 20, 240 110, 380 50 S 560 -10, 660 30"/>
+          <path class="p4" d="M-40 120 C 160 90, 280 160, 420 110 S 590 60, 660 90"/>
+        </g>
+      </svg>
+    </div>
     <div class="hero-top">
       <a class="brand" href="/login"><span class="brand-mark" aria-hidden="true"><svg class="ico"><use href="/static/icons.svg#logo"></use></svg></span> JobAgent</a>
-      <p class="hero-title">Find, tailor and track job applications in one place</p>
+      <p class="hero-kicker">Your job search, organised</p>
+      <p class="hero-title">Find, <span class="hero-accent">tailor</span> and track job applications in one place</p>
       <p class="hero-lead">Verified listings, transparent match scores and application packages prepared for your review.</p>
     </div>
-    <ul class="hero-features">
-      <li><span class="fi" aria-hidden="true"><svg><use href="/static/icons.svg#search"></use></svg></span><div><strong>Verified listings</strong><span>From official job-board APIs and employer career sites, de-duplicated and re-checked.</span></div></li>
-      <li><span class="fi" aria-hidden="true"><svg><use href="/static/icons.svg#target"></use></svg></span><div><strong>Transparent match scores</strong><span>Skills, seniority, sponsorship and location, with the reasoning shown.</span></div></li>
-      <li><span class="fi" aria-hidden="true"><svg><use href="/static/icons.svg#shield-check"></use></svg></span><div><strong>You approve every application</strong><span>Tailored resume, cover letter and answers. Nothing is sent without your approval.</span></div></li>
+    <ol class="hero-steps">
+      <li><span class="fi" aria-hidden="true"><svg><use href="/static/icons.svg#search"></use></svg></span><div><strong>Discover</strong><span>Roles from official job boards and employer career sites, de-duplicated and re-checked.</span></div></li>
+      <li><span class="fi" aria-hidden="true"><svg><use href="/static/icons.svg#target"></use></svg></span><div><strong>Tailor</strong><span>A match score with the reasoning shown, plus a resume and cover letter for each role.</span></div></li>
+      <li><span class="fi" aria-hidden="true"><svg><use href="/static/icons.svg#shield-check"></use></svg></span><div><strong>Apply with approval</strong><span>Nothing is sent until you approve it, on the employer’s own site.</span></div></li>
+    </ol>
+    <ul class="hero-trust">
+      <li><svg aria-hidden="true"><use href="/static/icons.svg#check"></use></svg> Official sources only</li>
+      <li><svg aria-hidden="true"><use href="/static/icons.svg#lock"></use></svg> Encrypted sessions</li>
+      <li><svg aria-hidden="true"><use href="/static/icons.svg#user"></use></svg> Private to your account</li>
     </ul>
-    <div class="mock" aria-hidden="true">
-      <div class="mock-head"><span>Recommended for you</span><span class="mock-dots"><i></i><i></i><i></i></span></div>
-      <div class="mock-row">
-        <span class="mono mono-0">AP</span>
-        <div class="grow"><strong>Software Engineer, Payments</strong><span>Dublin, Ireland · Hybrid</span></div>
-        <span class="badge b-green">Sponsorship</span>
-        <span class="score-pill s-high">92</span>
-      </div>
-      <div class="mock-row">
-        <span class="mono mono-2">TD</span>
-        <div class="grow"><strong>Backend Engineer (Python)</strong><span>London, United Kingdom · On-site</span></div>
-        <span class="badge b-blue">Ready to apply</span>
-        <span class="score-pill s-high">84</span>
-      </div>
-      <div class="mock-row">
-        <span class="mono mono-4">NB</span>
-        <div class="grow"><strong>Platform Engineer</strong><span>Berlin, Germany · Remote</span></div>
-        <span class="badge b-teal">Interview</span>
-        <span class="score-pill s-mid">67</span>
-      </div>
-    </div>
   </aside>
 
   <main class="auth-panel" id="main">

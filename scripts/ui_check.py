@@ -51,7 +51,8 @@ JOBS = [
      "Python, SQL, cloud. 1-3 years."),
 ]
 PAGES = ["/", "/jobs", "/applications", "/mnc", "/sponsorship", "/prep", "/runs", "/audit", "/settings",
-         "/recruiters", "/answers"]
+         "/recruiters", "/answers", "/logout"]
+PUBLIC_PAGES = ["/login", "/signup", "/signed-out"]
 
 LAYOUT_JS = r"""() => {
   const issues = [];
@@ -154,6 +155,17 @@ def main() -> int:
             errors: list[str] = []
             page.on("pageerror", lambda e: errors.append(f"JS error: {e}"))
             page.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
+            for path in PUBLIC_PAGES:
+                errors.clear()
+                resp = page.goto(base + path)
+                page.wait_for_load_state("networkidle")
+                if resp is None or resp.status >= 400:
+                    failures.append(f"[{width}px] {path}: HTTP {resp.status if resp else '?'}")
+                    continue
+                for i in page.evaluate(LAYOUT_JS) + errors:
+                    failures.append(f"[{width}px] {path}: {i}")
+                if shots:
+                    page.screenshot(path=str(shots / f"{path.strip('/').replace('-', '_')}_{width}.png"))
             page.goto(base + "/login")
             page.fill("input[name=username]", USER)
             page.fill("input[name=password]", PASSWORD)
@@ -180,7 +192,7 @@ def main() -> int:
         print("\n".join(failures))
         print(f"\n{len(failures)} UI issue(s).")
         return 1
-    print(f"UI check passed: {len(PAGES) + 2} pages x {len(WIDTHS)} widths.")
+    print(f"UI check passed: {len(PAGES) + len(PUBLIC_PAGES) + 2} pages x {len(WIDTHS)} widths.")
     return 0
 
 

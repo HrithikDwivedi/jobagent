@@ -24,7 +24,7 @@ PROTECTED_PAGES = ["/", "/jobs", "/jobs/1", "/applications", "/applications/1", 
                    "/studio/1/download.pdf", "/jobs/compare", "/letters/1"]
 PROTECTED_API = ["/api/stats", "/api/jobs"]
 PROTECTED_POSTS = ["/jobs/1/apply", "/applications/1/approve", "/applications/1/start", "/settings", "/runs/start",
-                   "/studio/upload", "/logout", "/jobs/1/external", "/applications/1/outcome", "/prep/skill"]
+                   "/studio/upload", "/jobs/1/external", "/applications/1/outcome", "/prep/skill"]
 
 
 @pytest.mark.parametrize("path", PROTECTED_PAGES)
@@ -95,6 +95,20 @@ def test_logout_invalidates_server_side(client):
     d = client.db()
     assert d.scalar("SELECT COUNT(*) FROM sessions") == 0
     d.close()
+
+
+def test_signed_out_page_and_logout_confirmation(client):
+    """GET /logout only asks to confirm (no state change); POST signs out and lands on /signed-out."""
+    r = client.client.get("/logout")
+    assert r.status_code == 200 and "Sign out of JobAgent?" in r.text
+    assert client.client.get("/", follow_redirects=False).status_code == 200      # still signed in
+    r = client.client.post("/logout", data={"csrf": client.csrf("/")}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/signed-out"
+    r = client.client.get("/signed-out")
+    assert r.status_code == 200 and "signed out" in r.text and 'href="/login"' in r.text
+    # anonymous: GET /logout and a stale POST both just land on the signed-out page
+    assert client.client.get("/logout", follow_redirects=False).headers["location"] == "/signed-out"
+    assert client.client.post("/logout", data={}, follow_redirects=False).headers["location"] == "/signed-out"
 
 
 @pytest.mark.parametrize("token", [None, "wrong-token"])
