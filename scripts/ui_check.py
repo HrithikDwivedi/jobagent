@@ -51,7 +51,11 @@ JOBS = [
      "Python, SQL, cloud. 1-3 years."),
 ]
 PAGES = ["/", "/jobs", "/applications", "/mnc", "/sponsorship", "/prep", "/runs", "/audit", "/settings",
-         "/recruiters", "/answers", "/logout"]
+         "/recruiters", "/answers", "/logout", "/support", "/support?q=auto+apply+fill+form+manually",
+         "/support/1", "/companion", "/admin/users", "/admin/support", "/admin/support/1",
+         "/jobs?view=all", "/welcome/2", "/welcome/3", "/welcome/5", "/admin/users?segment=healthcare"]
+NEW_USER = "nina.new"
+WIZARD = ["/welcome/1", "/welcome/2", "/welcome/3", "/welcome/4", "/welcome/5"]
 PUBLIC_PAGES = ["/login", "/signup", "/signed-out"]
 
 LAYOUT_JS = r"""() => {
@@ -124,6 +128,31 @@ def seed(cfg) -> None:
                 agent.score_and_store(db, jid, profile, s, pv, user_id=1)
             for jid in ids[:3]:
                 agent.prepare_application(db, jid, f"user:{USER}", profile, s, None, user_id=1)
+        from jobagent import helpdesk
+        from jobagent import users as users_mod
+        from jobagent.web import security
+        careers = {"priya.s": {"industries": ["healthcare", "education"], "roles": ["nurse", "teacher"],
+                               "experience": "mid"},
+                   "rahul.k": {"industries": ["finance"], "roles": ["accountant", "financial_analyst"],
+                               "custom_roles": ["Tax Associate"], "experience": "entry"}}
+        for uname, full, grant in (("priya.s", "Priya Sharma", True), ("rahul.k", "Rahul Kumar", False)):
+            u = security.create_user(db, uname, PASSWORD, actor="ui", email=f"{uname}@example.com", full_name=full,
+                                     role="user", status="approved")
+            settings_mod.set_value(db, "career", careers[uname], "ui", user_id=u)
+            if grant:
+                users_mod.set_ai_access(db, u, True, "ui", monthly_limit_usd=2.5)
+        security.create_user(db, NEW_USER, PASSWORD, actor="ui", email="nina@example.com", full_name="Nina New",
+                             role="user", status="approved", needs_onboarding=True)
+        # the admin's own preferences (multi-industry) so /welcome/3 shows several groups
+        settings_mod.set_value(db, "career", {"industries": ["technology", "business"],
+                                              "roles": ["software_engineer", "business_analyst"],
+                                              "experience": "entry"}, "ui", user_id=1)
+        tid = helpdesk.create_ticket(db, user_id=1, category="companion",
+                                     subject="Workday form did not fill the work authorisation question",
+                                     body="I opened a Workday application and pressed Fill this form. Most fields "
+                                          "filled but the work authorisation dropdown stayed empty.", actor="ui")
+        helpdesk.reply(db, tid, author_id=1, staff=True, actor="ui",
+                       body="Workday loads that dropdown late. Press Fill this form again once the page settles.")
     finally:
         db.close()
 
@@ -185,6 +214,33 @@ def main() -> int:
                 if shots:
                     name = re.sub(r"[^a-z0-9]+", "_", path.strip("/") or "overview")
                     page.screenshot(path=str(shots / f"{name}_{width}.png"), full_page=False)
+            # a brand-new account: the onboarding wizard in focus mode (no sidebar)
+            page.context.clear_cookies()
+            page.goto(base + "/login")
+            page.fill("input[name=username]", NEW_USER)
+            page.fill("input[name=password]", PASSWORD)
+            page.click("button[type=submit]")
+            page.wait_for_load_state("networkidle")
+            if "/welcome" not in page.url:
+                failures.append(f"[{width}px] new account was not sent to onboarding (at {page.url})")
+            for path in WIZARD:
+                errors.clear()
+                resp = page.goto(base + path)
+                page.wait_for_load_state("networkidle")
+                if resp is None or resp.status >= 400:
+                    failures.append(f"[{width}px] {path} (new user): HTTP {resp.status if resp else '?'}")
+                    continue
+                if "/welcome" not in page.url:
+                    failures.append(f"[{width}px] {path} (new user): ended up at {page.url}")
+                for i in page.evaluate(LAYOUT_JS) + errors:
+                    failures.append(f"[{width}px] {path} (new user): {i}")
+                if shots:
+                    page.screenshot(path=str(shots / f"new_{path.strip('/').replace('/', '_')}_{width}.png"),
+                                    full_page=True)
+                if path == "/welcome/2":
+                    page.click("input[value=healthcare]", force=True)
+                    page.click("form[action=\"/welcome/2\"] button[type=submit]")
+                    page.wait_for_load_state("networkidle")
             ctx.close()
         browser.close()
     server.should_exit = True
@@ -192,7 +248,7 @@ def main() -> int:
         print("\n".join(failures))
         print(f"\n{len(failures)} UI issue(s).")
         return 1
-    print(f"UI check passed: {len(PAGES) + len(PUBLIC_PAGES) + 2} pages x {len(WIDTHS)} widths.")
+    print(f"UI check passed: {len(PAGES) + len(PUBLIC_PAGES) + len(WIZARD) + 2} pages x {len(WIDTHS)} widths.")
     return 0
 
 

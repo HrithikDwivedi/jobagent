@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>JobAgent Companion settings</title><link rel="stylesheet" href="popup.css"></head>
+<body class="options">
+  <header><span class="mark">J</span><div><strong>JobAgent Companion settings</strong><div class="muted">Connect this browser to your account</div></div></header>
+  <label for="server">JobAgent address</label>
+  <input id="server" type="url" placeholder="https://your-jobagent.vercel.app" autocomplete="off">
+  <label for="token">Access token</label>
+  <input id="token" type="password" placeholder="jac_…" autocomplete="off">
+  <p class="muted small">Create a token in JobAgent → Application Companion. It is stored only in this browser and sent only to the address above.</p>
+  <button id="save" class="primary">Save and test connection</button>
+  <button id="forget">Disconnect</button>
+  <p id="status" class="small" aria-live="polite"></p>
+  <script src="defaults.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 
+from . import taxonomy
 from .normalize import normalize_title, seniority
 from .settings import COUNTRY_NAMES, country_tier
 from .skills import GENERIC, IMPLIES, RELATED
@@ -27,6 +28,53 @@ NON_SOFTWARE_ENGINEERING = re.compile(
     r"facilities|construction|piping|geotechnical|petroleum|mining|asic|fpga|analog|pcb|firmware|embedded)\b", re.I)
 
 
+_STOP = set("""a about above after again all also an and any are as at be been being both but by can could did do does
+doing during each few for from further had has have having he her here hers him his how i if in into is it its just
+like may me might more most must my no nor not now of off on once only or other our ours out over own per please
+same shall she should so some such than that the their them then there these they this those through to too under
+until up upon us very via was we were what when where which while who whom why will with within would you your yours
+role job team work working company candidate candidates experience years year looking join including ability strong
+excellent good great new opportunity apply application position skills skill required requirements responsibilities
+preferred plus etc well help make ensure provide support using use based day days week""".split())
+
+
+def text_terms(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z][a-z+#&.-]{2,}", (text or "").lower()) if w not in _STOP}
+
+
+def _strings(obj, out: list, depth: int = 0) -> None:
+    if depth > 6:
+        return
+    if isinstance(obj, str):
+        out.append(obj)
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _strings(v, out, depth + 1)
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            _strings(v, out, depth + 1)
+
+
+def keyword_overlap(job_text: str, resume_terms: set, top: int = 30) -> tuple:
+    """Share of the job description's most frequent meaningful words that also appear on the resume.
+    Works for every industry (the skills catalogue only knows technical skills)."""
+    words = [w for w in re.findall(r"[a-z][a-z+#&.-]{2,}", (job_text or "").lower()) if w not in _STOP]
+    if not words:
+        return 0.0, []
+    freq: dict = {}
+    for w in words:
+        freq[w] = freq.get(w, 0) + 1
+    key = [w for w, _ in sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))[:top]]
+    hit = [w for w in key if w in resume_terms]
+    return len(hit) / len(key), hit
+
+
+def _resume_terms(structured) -> set:
+    texts: list = []
+    _strings(structured or {}, texts)
+    return text_terms(" ".join(texts)[:200000])
+
+
 def candidate_profile(resume_structured: dict, resume_analysis: dict, candidate: dict) -> dict:
     evidence = dict(resume_analysis.get("skill_evidence", {}))
     for sk, level in list(evidence.items()):
@@ -37,6 +85,7 @@ def candidate_profile(resume_structured: dict, resume_analysis: dict, candidate:
         "experience_years": round(resume_analysis.get("experience_months", 0) / 12, 1),
         "languages": {l["language"].lower(): l["level"] for l in candidate.get("languages", [])},
         "work_authorization": candidate.get("work_authorization", {}),
+        "resume_terms": _resume_terms(resume_structured),
     }
 
 
@@ -54,9 +103,14 @@ def _skill_credit(skill: str, profile: dict) -> tuple[float, str]:
     return 0.0, "not established by your resume"
 
 
+LEVEL_YEARS = {"student": 0, "entry": 1, "mid": 3, "senior": 7, "manager": 8, "executive": 12}
+
+
 def score_job(job: dict, analysis: dict, sponsorship: dict, profile: dict, settings: dict) -> dict:
     weights = settings["weights"]
     reasons, gaps, disq, notes = [], [], [], []
+    career = settings.get("career") or {}
+    career_on = taxonomy.has_career(career)       # False = the original software-engineering profile
 
     # ---------------- technical
     must, nice = analysis.get("must_have", []), analysis.get("nice_to_have", [])
@@ -84,17 +138,51 @@ def score_job(job: dict, analysis: dict, sponsorship: dict, profile: dict, setti
         weak = [d["skill"] for d in must_detail if 0.5 <= d["credit"] < 1.0]
         if weak:
             gaps.append(f"Only partially shown: {', '.join(weak)}.")
+    elif career_on and (job.get("industry") or "technology") != "technology":
+        terms = profile.get("resume_terms") or set()
+        if terms:
+            frac, hit = keyword_overlap(job.get("description_text") or "", terms)
+            technical = round(0.3 + 0.7 * min(1.0, frac * 1.6), 3)
+            if hit:
+                reasons.append(f"Your resume covers key words from this job: {', '.join(hit[:8])}.")
+            if frac < 0.2:
+                gaps.append("Few of this job's key words appear on your resume.")
+        else:
+            technical = 0.5
+            notes.append("Upload your resume to compare your skills with this job (50% assumed).")
     else:
         technical = 0.3
         notes.append("No recognisable technical requirements were extracted; technical fit cannot be confirmed (30%).")
 
     # ---------------- experience & seniority
     cand_years = profile["experience_years"]
+    my_level = career.get("experience") if career_on else None
+    if my_level and not cand_years:
+        cand_years = LEVEL_YEARS.get(my_level, 0)
     req = analysis.get("experience_years")
     level = seniority(job.get("title"))
     excluded_terms = [t for t in settings.get("excluded_title_terms", [])
                       if re.search(r"(?<![a-z])" + re.escape(t.strip()) + r"(?![a-z])", (job.get("title") or "").lower())]
-    if level in ("senior", "staff", "principal", "lead"):
+    if my_level:
+        fit = taxonomy.LEVEL_FIT[my_level].get(level, 0.3)
+        if my_level in ("manager", "executive") and taxonomy.MANAGER_TITLE.search(normalize_title(job.get("title"))):
+            fit = max(fit, 0.95)
+        if excluded_terms:
+            experience = 0.2
+            disq.append(f"Title contains excluded term(s): {', '.join(excluded_terms)}.")
+        elif fit <= 0.25:
+            experience = fit
+            disq.append(f"A {level}-level title does not suit your level ({taxonomy.EXPERIENCE[my_level][0]}).")
+        else:
+            experience = fit
+            if req is not None and req - cand_years > 2:
+                experience = min(experience, 0.3)
+                gaps.append(f"Asks for {req:g}+ years; your level suggests ~{cand_years:g}.")
+            elif req is not None and req <= cand_years:
+                reasons.append(f"Requires {req:g}+ years; fits your experience.")
+            if fit >= 0.9:
+                reasons.append(f"Seniority fits your level ({taxonomy.EXPERIENCE[my_level][0]}).")
+    elif level in ("senior", "staff", "principal", "lead"):
         experience = 0.1
         disq.append(f"Title indicates {level}-level role; you have ~{cand_years} years of experience.")
     elif excluded_terms:
@@ -118,8 +206,14 @@ def score_job(job: dict, analysis: dict, sponsorship: dict, profile: dict, setti
         else:
             experience = 0.0
             disq.append(f"Requires {req:g}+ years of experience; you have ~{cand_years}.")
+    wanted_types = (career.get("employment_types") or ["full_time"]) if career_on else ["full_time"]
     if level == "intern" or job.get("employment_type") == "internship":
-        disq.append("Internship / working-student position.")
+        if "internship" not in wanted_types:
+            disq.append("Internship / working-student position.")
+    elif (career_on and job.get("employment_type") in taxonomy.EMPLOYMENT_TYPES
+          and job.get("employment_type") not in wanted_types):
+        gaps.append(f"{taxonomy.EMPLOYMENT_TYPES[job['employment_type']]} role; you asked for "
+                    + ", ".join(taxonomy.EMPLOYMENT_TYPES[t] for t in wanted_types) + ".")
 
     # ---------------- sponsorship & work authorisation
     cls = sponsorship["classification"]
@@ -143,7 +237,13 @@ def score_job(job: dict, analysis: dict, sponsorship: dict, profile: dict, setti
     # ---------------- role alignment
     title_n = normalize_title(job.get("title"))
     preferred = settings.get("preferred_roles", [])
-    if NON_SOFTWARE_ENGINEERING.search(job.get("title") or ""):
+    job_ind, job_role = job.get("industry"), job.get("role_key")
+    if career_on and not job_ind:
+        job_ind, job_role = taxonomy.classify(job.get("title"))
+    if career_on:
+        role, why = taxonomy.job_fit(career, job_ind, job_role, job.get("title"))
+        (reasons if role >= 0.9 else gaps).append(why)
+    elif NON_SOFTWARE_ENGINEERING.search(job.get("title") or ""):
         role = 0.0
         disq.append("Engineering discipline outside software (hardware / non-software engineering).")
     elif NON_ENGINEERING.search(job.get("title") or "") and not ENGINEERING.search(job.get("title") or ""):
@@ -157,7 +257,7 @@ def score_job(job: dict, analysis: dict, sponsorship: dict, profile: dict, setti
     else:
         role = 0.2
         gaps.append("Title does not clearly match your target roles.")
-    if re.search(r"\b(frontend|front end|ios|android|mobile|embedded|firmware|hardware|sre|devops|data engineer|"
+    if not career_on and re.search(r"\b(frontend|front end|ios|android|mobile|embedded|firmware|hardware|sre|devops|data engineer|"
                  r"machine learning engineer|security engineer|qa|test automation)\b", title_n) and role < 1.0:
         role = min(role, 0.4)
         notes.append("Specialisation differs from your backend/full-stack profile.")

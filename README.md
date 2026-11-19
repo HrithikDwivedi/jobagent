@@ -134,13 +134,121 @@ rows are assigned to it (SQLite table rebuilds run with foreign keys off and are
   other users' resumes, applications or settings.
 * **Shared:** jobs, employers, listings, sponsorship evidence, the UK sponsor register and the Top-MNC catalogue.
   Whether a job needs sponsorship is computed per user from their own candidate facts when it is scored.
-* **Global (admin-only) settings:** sources, Top MNCs, AI and schedule.
-* **AI is administrator-only** (enforced in `AIService`, not just the UI): other users always get the rule-based
-  tailoring, cover letters and job analysis.
+* **Global (admin-only) settings:** sources, Top MNCs, AI provider/model/budgets and schedule.
+* **AI access is granted per user by the administrator** (enforced in `AIService`, not just the UI). New sign-ups
+  start **without** AI and use the rule-based tailoring, cover letters and job analysis. On **Admin → Users** the
+  *AI access* column grants it (optionally with a personal monthly allowance in USD, on top of the installation
+  budget) or removes it; the user is emailed either way. Access is re-checked before every AI call, so removing
+  it, suspending the account or using up the allowance takes effect immediately. The administrator always has AI.
+  Users can request it from **Help & Support**, and the request page has a one-click *Grant AI access* button.
 * Discovery is installation-wide (admin / cron): each run fetches jobs once (union of all users' target
   countries), then scores and prepares for every approved user, round-robin within the time budget; a run that
   runs out of time continues with the next user on the following run. A normal user's "Score my jobs now" button
   scores/prepares only their own jobs. CLI commands take `--user USERNAME` (default: the administrator).
+
+## Every industry: onboarding, personal feed and audience
+
+JobAgent is not only for software engineers. `jobagent/taxonomy.py` defines 15 industries (technology, finance,
+sales, marketing, healthcare, education, HR, operations, customer service, design, engineering, legal,
+administration, hospitality/retail, business/consulting) with 3-7 roles each, and classifies every job title (and
+the source's own category) into an industry and role.
+
+* **Onboarding** (`/welcome`): every account created through `/signup` answers five short steps at its first
+  sign-in, before anything else opens: 1. resume (optional; its job titles pre-select industries and roles),
+  2. industries (required, max 3), 3. roles in those industries (required, max 3, or typed in the user's own words),
+  4. experience level and job types, 5. target countries (max 8), on-site/hybrid/remote, visa sponsorship need
+  (none / some countries / all), relocation, current location and minimum salary. Each step is validated and saved
+  on its own; the last step runs a short personal search (45 s) for those roles and opens the user's feed.
+  Accounts created by `/setup` or the CLI are not forced through it; the overview invites them, and anyone can
+  change their answers later under **Job preferences**.
+* **What the answers change:** discovery keeps jobs for the union of every user's roles (users without preferences
+  keep the original software-engineering scope); scoring rewards the user's own roles, matches seniority to their
+  level (a "Store Manager" is never excluded for a manager), compares the job's key words with the resume for
+  non-technical jobs, accepts internships only when chosen, and skips sponsorship filtering for users who need no
+  visa. **Jobs → For you** shows only the user's industries and roles (**All jobs** shows everything, with an
+  Industry filter). The menu hides what does not apply (Top MNCs for industries outside tech/finance/business,
+  Sponsorship for users who need no visa). Users who skipped the resume still get ranked jobs.
+* **Sources for every industry:** Greenhouse/Lever/Ashby boards and Arbeitnow now contribute their non-technical
+  jobs too; **Jobicy** (public remote-jobs API, one feed per chosen industry, credited with a link to the original
+  posting) is always on; **Adzuna** (official API, every industry in the UK, US, India, Canada, Australia and 14
+  more countries) is used when `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` are set (free keys at developer.adzuna.com),
+  searching each chosen role in each target country.
+* **Admin → Users & audience:** every account is classified automatically ("Early-career · Healthcare & Life
+  Sciences · Nurse", with tags such as *Career switcher* when the resume is from another industry, *Needs visa
+  sponsorship*, *Remote only*, *Inferred* for accounts that never answered). Segment cards per industry show users,
+  the roles they want with the open jobs for each, levels and target countries, and **job supply** (open jobs per
+  interested user: low / some / good) with concrete actions when supply is low. A funnel shows accounts → approved →
+  preferences set → resume uploaded → applied, and the accounts table can be filtered by segment. Only preferences
+  and counts are shown; the onboarding page tells users the administrator can see their industries, roles and level.
+
+### Closed jobs are removed
+
+* A posting that says it is no longer accepting applications (or whose closing date has passed) is never stored,
+  and a known job whose listing starts saying so is closed at once. "Open until the position is filled" is not
+  mistaken for a closure.
+* Boards fetched completely (Greenhouse, Lever, Ashby, career sites) close jobs that disappear, as before. Feeds that
+  only show recent jobs (Jobicy, Adzuna) cannot report closures, so an open job that no source has listed for 21
+  days is marked expired, and each run re-checks up to 15 such jobs by opening their page (HTTP 404/410 or a
+  "no longer accepting applications" page closes them), starting with jobs someone bookmarked or is applying to.
+  The job is also re-checked when someone presses Apply.
+* Closed jobs disappear from every list immediately; pre-submission applications for them are closed. After 30 days
+  a closed job is deleted completely unless someone applied, bookmarked it, tailored a resume or letter for it, or
+  saved a recruiter contact from it (their history keeps it).
+
+## Help & Support
+
+* **Help & Support** (`/support`, every user): a live **account check** (missing resume or candidate details,
+  unanswered screening questions holding applications back, privacy-box permission, auto-apply off, AI not
+  enabled or allowance nearly used, Companion not connected, each with a *Fix* link), **instant answers** while
+  typing (built-in help articles plus answers the administrator flagged; "This solved it" counts helpfulness),
+  and **requests**: topic, subject and description, then a conversation thread. Users can resolve or re-open their
+  own requests; the menu shows a badge when the administrator has replied. Limits: 10 open requests, 20 per day.
+* **Support desk** (`/admin/support`, administrator): queue with filters and counts, reply / resolve / close,
+  the requester's AI status with grant/remove and their account check, *suggested replies* ("Use this reply"),
+  and **Save this reply as a suggested answer** so the next user asking something similar is answered before
+  raising a request. Suggested answers can also be written, edited and deleted on the desk.
+* New requests and user replies email the administrator; administrator replies email the user (any configured
+  mail provider; otherwise recorded in the outbox). Requests are private to their author and the administrator.
+
+## Application Companion (browser extension)
+
+Fills job application forms on **any** site (Workday, iCIMS, SmartRecruiters, Taleo, company portals, and the
+Greenhouse/Lever/Ashby forms auto-apply handed back) inside the user's own browser, so sign-ins, multi-page forms
+and CAPTCHAs are handled by the person while the typing is done for them.
+
+1. **Application Companion** page → *Download extension* (the zip is built per installation: the server address
+   is pre-filled). Unzip, open `chrome://extensions`, enable *Developer mode*, *Load unpacked*.
+2. Create an **access token** on the same page (shown once; 90 days; max 5 active; revocable) and paste it in the
+   extension's settings.
+3. On an application form click the JobAgent icon → **Fill this form**.
+
+How it works: the extension reads the form with the same field discovery as auto-apply (`extract.js` is generated
+from `autoapply/drivers.py`), sends only the field labels/options to `POST /api/companion/plan`, and the server
+answers with the **same `Matcher`** auto-apply uses: confirmed candidate facts, the screening-answer library, the
+application's reviewed answers, resume facts, "decline to self-identify" for voluntary diversity questions.
+It then fills inputs the way typing does (React/Angular see the change), picks select/radio/button/combobox
+options, attaches the tailored resume PDF (or the canonical one) and the cover letter, and highlights fields:
+green = filled, amber = needs you, blue = AI draft. It **never** presses Submit, never overwrites something the
+person already typed, never fills passwords, bank, card or ID numbers, never ticks required privacy boxes unless
+the user allowed it on Screening Answers, and never solves CAPTCHAs.
+
+* **Save my answers** collects the questions the person answered themselves; they confirm which to keep and they
+  go into the Screening Answers library (personal fields, diversity questions and sensitive data are refused
+  server-side). Held-back auto-apply applications asking the same question are re-queued.
+* **AI draft open questions** (only with AI access): drafts answers to empty free-text questions from confirmed
+  facts only, marked blue for review.
+* **I've submitted this application** records the application as submitted with the page URL and any
+  confirmation text the page showed.
+* The page is matched to the user's prepared application by URL (host + path, Greenhouse `gh_jid`), or chosen
+  in the popup. Pages that are not in JobAgent still fill from the profile.
+* Security: the token lives only in the extension's storage and is sent only from its service worker (web pages
+  cannot reach it); the server stores only its SHA-256 hash; `/api/companion/*` accepts only `Authorization:
+  Bearer` (no cookies, so no CSRF) and every query is scoped to the token's user; tokens stop working when revoked,
+  expired or the account is suspended. Audit entries record counts and the site's host, never the answers.
+
+Why not control the mouse and keyboard of the whole computer? Desktop automation (pyautogui and similar) cannot
+run on the hosted server, breaks whenever a window moves, and would have access to everything on the machine.
+The extension acts only inside the application tab the user is looking at, which is safer and far more reliable.
 
 ## Using it
 

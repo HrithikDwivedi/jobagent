@@ -7,14 +7,27 @@
 <div class="page-head">
   <div>
     <h1>Jobs</h1>
-    <p>Verified listings from official job-board APIs. Pick filter options and press <em>Show results</em>.</p>
+    {% set cs = career_summary|default({}) %}
+    {% if f.view == 'mine' and cs.has_career %}
+      <p>Your feed: <strong>{{ cs.roles|join(', ') }}</strong> in {{ cs.industries|join(', ') }}{% if cs.countries %} · {{ cs.countries[:4]|join(', ') }}{% if cs.countries|length > 4 %} +{{ cs.countries|length - 4 }}{% endif %}{% endif %}. <a href="/welcome/2">Change</a></p>
+    {% elif f.view == 'mine' %}
+      <p>Verified listings from official job-board APIs. <a href="/welcome/2">Choose your industries and roles</a> to get a personal feed.</p>
+    {% else %}
+      <p>Every open job JobAgent found, in all industries. Your scores are shown where we have them.</p>
+    {% endif %}
   </div>
   <div class="actions">
     <a class="btn btn-sm" href="/jobs/export.csv{{ ('?' ~ base_qs) if base_qs }}">{{ m.ico('download') }} Export CSV</a>
   </div>
 </div>
 
+<nav class="view-tabs" aria-label="Which jobs to show">
+  <a href="/jobs"{% if f.view == 'mine' %} aria-current="page"{% endif %}>{{ m.ico('target') }} For you</a>
+  <a href="/jobs?view=all"{% if f.view == 'all' %} aria-current="page"{% endif %}>{{ m.ico('globe') }} All jobs</a>
+</nav>
+
 <form method="get" action="/jobs" id="job-search" class="job-search" aria-label="Job search and filters">
+  {% if f.view == 'all' %}<input type="hidden" name="view" value="all">{% endif %}
   <div class="searchbar" role="search" aria-label="Job search">
     <div class="field">
       <label for="q" class="visually-hidden">Keywords</label>
@@ -28,6 +41,17 @@
   </div>
 
   <div class="pillbar" aria-label="Filters">
+    <details class="pill{{ ' active' if f.industries }}">
+      <summary>{{ (f.industries|length ~ ' industr' ~ ('y' if f.industries|length == 1 else 'ies')) if f.industries else 'Industry' }}</summary>
+      <div class="pill-panel">
+        <fieldset><legend>Industry</legend>
+          {% for k, v in industry_opts %}
+            <label class="check"><input type="checkbox" name="industry" value="{{ k }}"{% if k in f.industries %} checked{% endif %}> {{ v }}<span class="count">{{ industry_facets.get(k, 0) }}</span></label>
+          {% endfor %}
+        </fieldset>
+        <div class="panel-foot"><button type="submit" class="btn btn-primary btn-sm">Show results</button></div>
+      </div>
+    </details>
     <details class="pill{{ ' active' if f.date_posted != 'any' }}">
       <summary>{{ opts.date_posted[f.date_posted] if f.date_posted != 'any' else 'Date posted' }}</summary>
       <div class="pill-panel">
@@ -175,7 +199,7 @@
     <label class="pill-toggle{{ ' active' if f.include_closed }}"><input type="checkbox" name="include_closed" value="1" data-autosubmit{% if f.include_closed %} checked{% endif %}> Include closed</label>
 
     <span class="badge badge-outline filters-count">{{ m.ico('filter') }} All filters ({{ f.active_count() }})</span>
-    {% if f.active_count() or f.q or f.location %}<a href="/jobs" class="small">Reset</a>{% endif %}
+    {% if f.active_count() or f.q or f.location %}<a href="/jobs{{ "?view=all" if f.view == "all" }}" class="small">Reset</a>{% endif %}
   </div>
 
   <div class="results-head">

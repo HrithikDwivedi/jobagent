@@ -110,6 +110,13 @@
       sub: "Making sure the role is still open at its source.",
       stages: ["Contacting the job board…", "Confirming the listing is still open…", "Refreshing the details…"]
     },
+    feed: {
+      title: "Finding jobs for you",
+      sub: "Searching for the roles you chose. This takes up to a minute.",
+      stages: ["Saving your preferences…", "Searching jobs in your industries…", "Checking the countries you chose…",
+               "Removing closed and duplicate postings…", "Matching jobs to your roles and level…",
+               "Ranking your personal job feed…"]
+    },
     start: {
       title: "Starting your application",
       sub: "Your approval is checked against the review fingerprint.",
@@ -543,6 +550,8 @@
 
     // ---------------------------------------------------------------- jobs: in-page detail pane with skeleton
     initJobPane();
+    initSupport();
+    initPickers();
 
     progress.done();
   });
@@ -680,5 +689,92 @@
     window.addEventListener("popstate", function () {
       if (location.pathname === "/jobs") load(location.href, false);
     });
+  }
+  // Help & Support: live "answers that might already solve it" while typing a request; staff "Use this reply".
+  function initSupport() {
+    $all("[data-use-answer]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var box = doc.querySelector("[data-reply-box]");
+        if (!box) return;
+        box.value = (box.value ? box.value.replace(/\s+$/, "") + "\n\n" : "") + btn.getAttribute("data-use-answer");
+        box.focus();
+      });
+    });
+    var form = doc.querySelector("[data-suggest-form]");
+    if (!form || !window.fetch) return;
+    var box = form.querySelector("[data-suggest-box]");
+    var list = box.querySelector("ul");
+    var timer = null, last = "";
+    function render(items) {
+      list.textContent = "";
+      items.slice(0, 3).forEach(function (s) {
+        var li = doc.createElement("li");
+        var d = doc.createElement("details");
+        var sm = doc.createElement("summary");
+        sm.textContent = s.question;
+        var p = doc.createElement("p");
+        p.textContent = s.answer;
+        d.appendChild(sm); d.appendChild(p); li.appendChild(d); list.appendChild(li);
+      });
+      box.hidden = items.length === 0;
+    }
+    function lookup() {
+      var q = (form.elements.subject.value + " " + form.elements.body.value).trim();
+      var cat = form.elements.category.value;
+      if (q.length < 6 || q === last) return;
+      last = q;
+      fetch("/support/suggest?q=" + encodeURIComponent(q.slice(0, 500)) + "&category=" + encodeURIComponent(cat),
+            { credentials: "same-origin", headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.ok ? r.json() : { suggestions: [] }; })
+        .then(function (d) { render(d.suggestions || []); })
+        .catch(function () {});
+    }
+    ["subject", "body"].forEach(function (n) {
+      form.elements[n].addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(lookup, 450); });
+    });
+  }
+  // Onboarding pickers: "choose up to N" groups and the "only some countries" follow-up.
+  function initPickers() {
+    $all("[data-max-checked]").forEach(function (group) {
+      var max = parseInt(group.getAttribute("data-max-checked"), 10) || 3;
+      var counter = group.querySelector("[data-pick-count]");
+      function sync() {
+        var boxes = $all("input[type=checkbox]", group);
+        var on = boxes.filter(function (b) { return b.checked; }).length;
+        var extra = group.querySelector("[data-counts-toward]");
+        if (extra && extra.value.trim()) on += 1;
+        boxes.forEach(function (b) {
+          b.disabled = !b.checked && on >= max;
+          var card = b.closest(".pick");
+          if (card) card.classList.toggle("is-disabled", b.disabled);
+        });
+        if (counter) counter.textContent = on + " of " + max + " selected";
+      }
+      group.addEventListener("change", sync);
+      group.addEventListener("input", sync);
+      sync();
+    });
+    $all("input[data-filter-list]").forEach(function (input) {
+      var list = doc.querySelector(input.getAttribute("data-filter-list"));
+      if (!list) return;
+      input.addEventListener("input", function () {
+        var q = input.value.trim().toLowerCase();
+        $all("[data-filter-item]", list).forEach(function (item) {
+          var hit = !q || item.getAttribute("data-filter-item").indexOf(q) !== -1;
+          var box = item.querySelector("input");
+          item.hidden = !hit && !(box && box.checked);
+        });
+      });
+    });
+    var some = doc.querySelector("[data-show-when-some]");
+    if (some) {
+      var radios = $all("input[name=sponsorship]");
+      var upd = function () {
+        var v = (radios.filter(function (r) { return r.checked; })[0] || {}).value;
+        some.hidden = v !== "some";
+      };
+      radios.forEach(function (r) { r.addEventListener("change", upd); });
+      upd();
+    }
   }
 })();

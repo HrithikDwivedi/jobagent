@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Support desk{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Support desk</h1>
+    <p>Requests raised by users. Reply, resolve, grant AI access from the request itself, and save good replies as suggested answers so the next user with the same question is helped instantly.</p>
+  </div>
+</div>
+
+<div class="kpis">
+  <a class="kpi{{ ' warn' if counts.open }}" href="/admin/support?status=open"><div class="kpi-label">Open</div><div class="kpi-value">{{ counts.open }}</div><div class="kpi-hint">waiting for you</div></a>
+  <a class="kpi" href="/admin/support?status=answered"><div class="kpi-label">Answered</div><div class="kpi-value">{{ counts.answered }}</div><div class="kpi-hint">waiting for the user</div></a>
+  <a class="kpi" href="/admin/support?status=resolved"><div class="kpi-label">Resolved</div><div class="kpi-value">{{ counts.resolved }}</div></a>
+  <a class="kpi" href="#answers"><div class="kpi-label">Suggested answers</div><div class="kpi-value">{{ answers|length }}</div><div class="kpi-hint">shown to users</div></a>
+</div>
+
+<section class="card section" aria-labelledby="h-queue">
+  <h2 id="h-queue">Requests</h2>
+  <form method="get" action="/admin/support" class="row search-row">
+    <div class="field mb0"><label for="fs" class="visually-hidden">Status</label>
+      <select id="fs" name="status">
+        <option value="active"{% if status == 'active' %} selected{% endif %}>Open + answered</option>
+        {% for k, v in statuses.items() %}<option value="{{ k }}"{% if k == status %} selected{% endif %}>{{ v }}</option>{% endfor %}
+        <option value="all"{% if status == 'all' %} selected{% endif %}>All</option>
+      </select></div>
+    <div class="field mb0"><label for="fc" class="visually-hidden">Topic</label>
+      <select id="fc" name="category"><option value="">All topics</option>
+        {% for k, v in categories.items() %}<option value="{{ k }}"{% if k == category %} selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select></div>
+    <div class="field grow mb0"><label for="fq" class="visually-hidden">Search</label><input type="search" id="fq" name="q" value="{{ q }}" placeholder="Subject or username" maxlength="80"></div>
+    <button type="submit" class="btn">{{ m.ico('filter') }} Filter</button>
+  </form>
+  {% if tickets %}
+    <div class="table-wrap mt"><table>
+      <caption class="visually-hidden">Support requests</caption>
+      <thead><tr><th scope="col">Subject</th><th scope="col">User</th><th scope="col">Topic</th><th scope="col">Status</th><th scope="col">Updated</th><th scope="col" class="num">Messages</th></tr></thead>
+      <tbody>
+      {% for t in tickets %}
+        <tr>
+          <td><a href="/admin/support/{{ t.id }}">{{ t.subject }}</a></td>
+          <td>{{ t.full_name or t.username }} <span class="muted small">@{{ t.username }}</span></td>
+          <td>{{ categories.get(t.category, t.category) }}</td>
+          <td><span class="badge {{ {'open': 'b-amber', 'answered': 'b-blue', 'resolved': 'b-green', 'closed': 'b-grey'}[t.status] }}">{{ statuses[t.status] }}</span></td>
+          <td class="nowrap">{{ m.dt(t.updated_at) }}</td>
+          <td class="num">{{ t.n_messages }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <div class="empty"><strong>Queue clear</strong>No requests match this filter.</div>
+  {% endif %}
+</section>
+
+<section class="card section" id="answers" aria-labelledby="h-answers">
+  <h2 id="h-answers">Suggested answers</h2>
+  <p class="muted">Users see these (marked "Answered by the team") when their question matches, before they raise a request. Built-in help articles are shown too.</p>
+  {% for a in answers %}
+    <details class="faq">
+      <summary>{{ a.question }} <span class="badge b-grey">{{ categories.get(a.category, a.category) }}</span>{% if a.helpful %} <span class="badge b-green">{{ a.helpful }} found it helpful</span>{% endif %}</summary>
+      <div class="faq-body">
+        <form method="post" action="/admin/support/answers" class="stack-sm">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="answer_id" value="{{ a.id }}">
+          <div class="field"><label for="ac-{{ a.id }}">Topic</label><select id="ac-{{ a.id }}" name="category">{% for k, v in categories.items() %}<option value="{{ k }}"{% if k == a.category %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+          <div class="field"><label for="aq-{{ a.id }}">Question</label><input type="text" id="aq-{{ a.id }}" name="question" value="{{ a.question }}" maxlength="300" required></div>
+          <div class="field"><label for="aa-{{ a.id }}">Answer</label><textarea id="aa-{{ a.id }}" name="answer" rows="4" maxlength="4000" required>{{ a.answer }}</textarea></div>
+          <div class="field"><label for="ak-{{ a.id }}">Keywords</label><input type="text" id="ak-{{ a.id }}" name="keywords" value="{{ a.keywords }}" maxlength="300"></div>
+          <button type="submit" class="btn btn-sm btn-primary">Save</button>
+        </form>
+        <form method="post" action="/admin/support/answers/{{ a.id }}/delete" class="mt">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </div>
+    </details>
+  {% else %}
+    <p class="muted">None yet. Tick "Save this reply as a suggested answer" when replying, or add one here.</p>
+  {% endfor %}
+  <details class="disclosure mt">
+    <summary>Add a suggested answer</summary>
+    <div class="disclosure-body">
+      <form method="post" action="/admin/support/answers" class="stack-sm">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="field"><label for="na-c">Topic</label><select id="na-c" name="category">{% for k, v in categories.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="na-q">Question</label><input type="text" id="na-q" name="question" maxlength="300" required></div>
+        <div class="field"><label for="na-a">Answer</label><textarea id="na-a" name="answer" rows="4" maxlength="4000" required></textarea></div>
+        <div class="field"><label for="na-k">Keywords <span class="hint">(optional)</span></label><input type="text" id="na-k" name="keywords" maxlength="300"></div>
+        <button type="submit" class="btn btn-primary">Add answer</button>
+      </form>
+    </div>
+  </details>
+</section>
+{% endblock %}

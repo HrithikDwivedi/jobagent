@@ -5,11 +5,19 @@
 <div class="page-head">
   <div>
     <h1>Overview</h1>
-    <p>Your job search at a glance. Statistics exclude demo/sample data.</p>
+    {% set cs = career_summary|default({}) %}
+    {% if cs.has_career %}
+      <p>Searching for <strong>{{ cs.roles|join(', ') }}</strong> ({{ cs.experience }}) in {{ cs.industries|join(', ') }}{% if cs.countries %} · {{ cs.countries[:4]|join(', ') }}{% endif %}. <a href="/welcome/2">Change preferences</a></p>
+    {% else %}
+      <p>Your job search at a glance. Statistics exclude demo/sample data.</p>
+    {% endif %}
   </div>
   <div class="actions"><a class="btn btn-primary" href="/jobs"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg> Browse jobs</a><a class="btn" href="/runs"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#runs"></use></svg> Agent runs</a></div>
 </div>
 
+{% if not (career_summary|default({})).has_career %}
+  <div class="alert alert-info" role="note"><strong>Get a feed made for you.</strong> Tell us your industries, roles, level and countries (2 minutes) and JobAgent searches jobs for exactly that, in any industry. <a href="/welcome/2">Set your job preferences</a></div>
+{% endif %}
 {% if o.has_sample %}
   <div class="alert alert-info" role="note"><strong>Demo/sample data present — excluded from statistics.</strong> Sample jobs are hidden from search and counts.</div>
 {% endif %}
@@ -26,7 +34,7 @@
   <ol class="checklist">
     <li>{% if resume %}<span class="badge b-green">Done</span>{% else %}<span class="badge b-amber">To do</span>{% endif %} <a href="/studio">Upload your resume</a> in Resume Studio (it becomes your canonical resume).</li>
     <li><a href="/settings#candidate">Confirm your candidate facts</a> (work authorisation, languages, notice period) — answers are never guessed.</li>
-    <li><a href="/settings#search">Choose target countries and roles</a>.</li>
+    <li><a href="/welcome/2">Choose your industries, roles and countries</a>.</li>
     <li>{% if o.jobs_total %}<span class="badge b-green">Done</span>{% else %}<span class="badge b-amber">To do</span>{% endif %} <a href="/runs">Run the agent</a> to discover and score jobs.</li>
   </ol>
 </section>
@@ -44,7 +52,7 @@
   <a class="kpi" href="/applications?status=offer"><div class="kpi-label">Offers</div><div class="kpi-value" data-count="{{ o.offers }}">{{ o.offers }}</div></a>
   <a class="kpi" href="/applications?status=rejected"><div class="kpi-label">Rejections</div><div class="kpi-value" data-count="{{ o.rejections }}">{{ o.rejections }}</div></a>
   <a class="kpi{{ ' warn' if o.problems }}" href="/applications?status=submission_failed&amp;status=submission_uncertain"><div class="kpi-label">Problems</div><div class="kpi-value" data-count="{{ o.problems }}">{{ o.problems }}</div><div class="kpi-hint">failed / uncertain</div></a>
-  <a class="kpi" href="/sponsorship"><div class="kpi-label">Sponsorship confirmed</div><div class="kpi-value" data-count="{{ o.sponsorship_confirmed }}">{{ o.sponsorship_confirmed }}</div><div class="kpi-hint">open jobs</div></a>
+  {% if '/sponsorship' not in nav_hide|default([]) %}<a class="kpi" href="/sponsorship"><div class="kpi-label">Sponsorship confirmed</div><div class="kpi-value" data-count="{{ o.sponsorship_confirmed }}">{{ o.sponsorship_confirmed }}</div><div class="kpi-hint">open jobs</div></a>{% endif %}
   <div class="kpi"><div class="kpi-label">Average match</div><div class="kpi-value">{{ o.avg_score if o.avg_score is not none else '—' }}</div><div class="kpi-hint">open, scored jobs</div></div>
 </div>
 

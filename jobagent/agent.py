@@ -19,11 +19,12 @@ from .ai import AIError, AIService, Provider, analyze_job_ai, cover_letter_ai, l
 from .config import AppConfig, validate_config
 from .db import Database, IntegrityError, LockHeld, audit, dumps, iso, loads, named_lock, utcnow
 from .http import FetchError, HttpClient
-from .ingest import mark_closures, upsert_raw
+from . import taxonomy
+from .ingest import classify_pending, expire_unseen, mark_closures, posting_closed, purge_closed, upsert_raw
 from .matching import candidate_profile, score_job
 from .resume import store as resume_store
 from .resume.parser import ResumeError
-from .sources import build_sources
+from .sources import build_sources, targeted_sources
 from .sponsorship import classify, load_register, refresh_uk_register, register_lookup
 
 CURSOR_KEY = "_discovery_cursor"
@@ -88,7 +89,8 @@ def profile_version(resume: dict | None, s: dict) -> str:
                    "candidate": s["candidate"], "weights": s["weights"], "targets": s["target_countries"],
                    "roles": s["preferred_roles"], "excl": s["excluded_title_terms"], "min": s["min_match_score"],
                    "policy": s["sponsorship_policy"], "arr": s["work_arrangements"], "sal": s["min_salary"],
-                   "india": s["include_india_remote"]})
+                   "india": s["include_india_remote"],
+                   "career": {k: v for k, v in (s.get("career") or {}).items() if k != "onboarded_at"}})
     return hashlib.sha256(basis.encode()).hexdigest()[:16]
 
 
@@ -242,10 +244,19 @@ def _save_user_cursor(db: Database, uid: int) -> None:
 
 def run_agent(db: Database, cfg: AppConfig, *, trigger: str = "manual", http: HttpClient | None = None,
               provider: Provider | None = None, time_budget_s: float | None = None, prepare: bool = True,
-              discover: bool = True, user_ids: list[int] | None = None, triggered_by: int | None = None) -> dict:
+              discover: bool = True, user_ids: list[int] | None = None, triggered_by: int | None = None,
+              personal_for: int | None = None) -> dict:
     """One idempotent agent run. Returns the run summary. Safe to call repeatedly or concurrently.
-    `user_ids` limits scoring/preparation to those users (default: every approved user)."""
+    `user_ids` limits scoring/preparation to those users (default: every approved user).
+    `personal_for` = a user id: discovery queries only the every-industry sources for THAT user's chosen industries,
+    roles and countries (a quick first search right after onboarding)."""
     g = settings_mod.discovery_settings(db)
+    if personal_for is not None:
+        g = settings_mod.personal_discovery_settings(db, personal_for)
+    try:
+        classify_pending(db)
+    except Exception:  # classification is best-effort; never block a run
+        pass
     try:
         lock_cm = named_lock(db, "agent_run", ttl_minutes=30 if time_budget_s else 120)
         lock_cm.__enter__()
@@ -275,7 +286,19 @@ def run_agent(db: Database, cfg: AppConfig, *, trigger: str = "manual", http: Ht
             return deadline is None or time.monotonic() + reserve < deadline
 
         if discover:
-            status = _discover(db, http, g, ctx, deadline, time_left, status)
+            status = _discover(db, http, g, ctx, deadline, time_left, status,
+                               adzuna_keys=(cfg.adzuna_app_id, cfg.adzuna_app_key), personal=personal_for is not None)
+        if personal_for is None:
+            # closed jobs: expire what no source lists any more, re-check pages that never report closures,
+            # and delete long-closed jobs nobody acted on
+            expired = expire_unseen(db)
+            ctx.stats["expired"] = len(expired)
+            for jid in expired:
+                ctx.decision(jid, "closed", "not listed by any source for 21 days")
+            if discover and time_left(30):
+                rc = recheck_jobs(db, http, time_left)
+                ctx.stats["rechecked"], ctx.stats["closed"] = rc["checked"], ctx.stats["closed"] + rc["closed"]
+            ctx.stats["purged"] = purge_closed(db)
 
         approved = settings_mod.approved_user_ids(db)
         targets = [u for u in approved if user_ids is None or u in user_ids]
@@ -312,9 +335,10 @@ def run_agent(db: Database, cfg: AppConfig, *, trigger: str = "manual", http: Ht
             "per_user": per_user}
 
 
-def _discover(db: Database, http: HttpClient, s: dict, ctx: RunContext, deadline, time_left, status: str) -> str:
+def _discover(db: Database, http: HttpClient, s: dict, ctx: RunContext, deadline, time_left, status: str, *,
+              adzuna_keys: tuple = (None, None), personal: bool = False) -> str:
     """Installation-wide discovery (shared jobs). Returns the updated run status."""
-    if s["sources"]["uk_sponsor_register"]["enabled"] and time_left(20):
+    if not personal and s["sources"]["uk_sponsor_register"]["enabled"] and time_left(20):
         try:
             info = refresh_uk_register(db, http, s["sources"]["uk_sponsor_register"]["max_age_days"])
             ctx.sources.append({"source": "uk_sponsor_register", **info})
@@ -324,16 +348,22 @@ def _discover(db: Database, http: HttpClient, s: dict, ctx: RunContext, deadline
     from .mnc import build_mnc_sources
     countries = settings_mod.all_target_countries(s) + (["IN"] if s["include_india_remote"] else [])
     # Top-MNC career-site feeds first (the user's priority), then the job-board sources.
-    items = build_mnc_sources(http, s["mnc"], countries) + build_sources(http, s["sources"])
+    scope = s.get("career_scope")
+    if personal:
+        items = targeted_sources(http, s["sources"], scope, countries, adzuna_keys, max_queries=12)
+    else:
+        items = (build_mnc_sources(http, s["mnc"], countries) + build_sources(http, s["sources"])
+                 + targeted_sources(http, s["sources"], scope, countries, adzuna_keys))
     cursor_row = db.one("SELECT value_json FROM settings WHERE key=?", (CURSOR_KEY,))
-    start_at = int(loads(cursor_row["value_json"], 0)) if (cursor_row and deadline) else 0
+    start_at = int(loads(cursor_row["value_json"], 0)) if (cursor_row and deadline and not personal) else 0
     if start_at >= len(items):
         start_at = 0
     for idx in range(start_at, len(items)):
         if not time_left(8):
             status = "partial"
             ctx.errors.append(f"Time budget reached; will resume at source {idx + 1}/{len(items)} next run.")
-            _save_cursor(db, idx)
+            if not personal:
+                _save_cursor(db, idx)
             break
         src, board = items[idx]
         res = src.fetch(board)
@@ -366,9 +396,14 @@ def _discover(db: Database, http: HttpClient, s: dict, ctx: RunContext, deadline
                 ctx.decision(jid, "closed", "no longer listed on its source board")
                 apps.close_for_job(db, jid)
     else:
-        _save_cursor(db, 0)
+        if not personal:
+            _save_cursor(db, 0)
     _update_uk_status(db)
     return status
+
+
+def user_job_scope(career: dict | None, alias: str = "j") -> tuple[str, list]:
+    return taxonomy.job_scope_sql(career, alias)
 
 
 def _process_user(db: Database, cfg: AppConfig, ctx: RunContext, uid: int, provider: Provider, prepare: bool,
@@ -376,22 +411,28 @@ def _process_user(db: Database, cfg: AppConfig, ctx: RunContext, uid: int, provi
     """Score, prepare and policy-approve for one user. Returns (stats, finished_within_budget)."""
     s = settings_mod.get_all(db, uid)
     ust = {"scored": 0, "prepared": 0, "policy_approved": 0}
-    ai = AIService(db, provider, s["ai"], ctx.id, user_id=uid)   # disabled automatically for non-admin users
+    ai = AIService(db, provider, s["ai"], ctx.id, user_id=uid)   # disabled unless the admin granted AI access
     try:
         resume = ensure_resume(db, cfg, user_id=uid)
     except ResumeError as e:
         resume = None
         ctx.errors.append(f"Resume (user {uid}): {e.message}")
-    if not resume:
+    career = s.get("career") or {}
+    if not resume and not taxonomy.has_career(career):
         return ust, True
     pversion = profile_version(resume, s)
-    profile = candidate_profile(resume["structured"], resume["analysis"], s["candidate"])
+    # without a resume (it is optional in onboarding) jobs are still ranked from the user's stated preferences
+    profile = candidate_profile((resume or {}).get("structured") or {}, (resume or {}).get("analysis") or {},
+                                s["candidate"])
+    if not resume:
+        prepare = False                  # tailored applications need a resume
+    scope_sql, scope_params = user_job_scope(career)
     finished = True
     if time_left(5):
         budget_ai = s["ai"]["max_jobs_analyzed_per_run"]
         rows = db.all("SELECT j.id FROM jobs j WHERE j.status='open' AND j.is_sample=0 AND NOT EXISTS (SELECT 1 FROM "
-                      "job_scores sc WHERE sc.job_id=j.id AND sc.user_id=? AND sc.profile_version=?) "
-                      "ORDER BY j.first_discovered_at DESC", (uid, pversion))
+                      "job_scores sc WHERE sc.job_id=j.id AND sc.user_id=? AND sc.profile_version=?)" + scope_sql +
+                      " ORDER BY j.first_discovered_at DESC", (uid, pversion, *scope_params))
         changed = {r["job_id"] for r in db.all("SELECT job_id FROM run_decisions WHERE run_id=? AND user_id IS NULL AND "
                                                 "decision IN ('new','updated','reopened')", (ctx.id,))}
         ids = {r["id"] for r in rows}
@@ -476,6 +517,45 @@ def _update_uk_status(db: Database) -> None:
                    (status, routes, iso(), r["id"]))
 
 
+def page_check(http: HttpClient, url: str | None) -> tuple[bool | None, str]:
+    """Open the job's own public page: gone (404/410) or saying it is closed -> False; readable -> True;
+    anything else (blocked, timeout, login wall) -> None (cannot tell, leave the job as it is)."""
+    if not url or not url.startswith(("https://", "http://")):
+        return None, "no link"
+    try:
+        resp = http.get(url)
+    except FetchError as e:
+        if e.status in (404, 410):
+            return False, f"job page returns HTTP {e.status}"
+        return None, str(e)[:120]
+    from .normalize import html_to_text
+    text = html_to_text(resp.text[:400000]) if "html" in resp.headers.get("content-type", "html") else resp.text
+    why = posting_closed(None, text)
+    if why:
+        return False, why
+    return True, "job page is live"
+
+
+def recheck_jobs(db: Database, http: HttpClient, time_left, limit: int = 15) -> dict:
+    """Re-verify open jobs from sources that never report closures, the ones people are acting on first."""
+    from .db import utcnow as _now
+    cutoff = iso(_now() - timedelta(days=3))
+    rows = db.all(
+        "SELECT j.id FROM jobs j WHERE j.status='open' AND j.is_sample=0 AND COALESCE(j.last_verified_at,'') < ? AND "
+        "NOT EXISTS (SELECT 1 FROM job_listings l WHERE l.job_id=j.id AND l.source IN ('greenhouse','lever','ashby')) "
+        "ORDER BY CASE WHEN EXISTS (SELECT 1 FROM applications a WHERE a.job_id=j.id AND a.status IN "
+        "('shortlisted','awaiting_approval','ready_to_apply')) OR EXISTS (SELECT 1 FROM user_bookmarks b WHERE "
+        "b.job_id=j.id) THEN 0 ELSE 1 END, j.last_verified_at LIMIT ?", (cutoff, limit))
+    out = {"checked": 0, "closed": 0}
+    for r in rows:
+        if not time_left(6):
+            break
+        if verify_job(db, r["id"], http) == "closed":
+            out["closed"] += 1
+        out["checked"] += 1
+    return out
+
+
 def verify_job(db: Database, job_id: int, http: HttpClient) -> str:
     """Re-check a single (shared) job before applying. Returns new status."""
     from .sources import AshbySource, GreenhouseSource, LeverSource
@@ -485,6 +565,10 @@ def verify_job(db: Database, job_id: int, http: HttpClient) -> str:
     adapters = {"greenhouse": GreenhouseSource(http), "lever": LeverSource(http), "ashby": AshbySource(http)}
     ad = adapters.get(listing["source"])
     result = ad.verify(listing["source_job_id"], None) if ad else None
+    reason = "no longer listed at the source"
+    if ad is None:
+        result, reason = page_check(http, listing.get("url") or db.scalar("SELECT apply_url FROM jobs WHERE id=?",
+                                                                           (job_id,)))
     if result is None and listing["source"] == "ashby":
         board = listing["source_job_id"].split(":")[0]
         res = ad.fetch(board)
@@ -498,6 +582,7 @@ def verify_job(db: Database, job_id: int, http: HttpClient) -> str:
         elif result is False:
             db.run("UPDATE jobs SET status='closed', last_verified_at=? WHERE id=?", (now, job_id))
             new = "closed"
+            audit(db, actor="agent", entity="job", entity_id=job_id, action="job_closed", detail={"reason": reason})
         else:
             new = db.scalar("SELECT status FROM jobs WHERE id=?", (job_id,))
     if new == "closed":

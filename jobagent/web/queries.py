@@ -52,6 +52,8 @@ class JobFilters:
     visa_friendly: bool = False
     mnc: list[str] = field(default_factory=list)   # ["all"] or catalogue keys
     sort: str = "relevant"
+    view: str = "mine"                             # mine = the user's industries/roles; all = every job
+    industries: list[str] = field(default_factory=list)
     page: int = 1
     per_page: int = 25
 
@@ -92,6 +94,8 @@ class JobFilters:
             visa_friendly=qp.get("visa_friendly") == "1",
             mnc=lst("mnc", {"all"} | {c["key"] for c in mnc_catalog()}),
             sort=qp.get("sort") if qp.get("sort") in SORTS else "relevant",
+            view="all" if qp.get("view") == "all" else "mine",
+            industries=lst("industry", __import__("jobagent.taxonomy", fromlist=["BY_ID"]).BY_ID),
             page=num("page", 1, 10_000, 1),
             per_page=num("per_page", 10, 100, 25),
         )
@@ -100,16 +104,26 @@ class JobFilters:
         return sum(bool(x) for x in (self.countries, self.date_posted != "any", self.experience, self.job_type,
                                      self.remote, self.sponsorship, self.recommendation, self.status, self.company,
                                      self.salary_min or self.has_salary, self.min_score, self.bookmarked,
-                                     self.include_closed, self.visa_friendly, self.mnc))
+                                     self.include_closed, self.visa_friendly, self.mnc, self.industries))
 
 
 def _like(s: str) -> str:
     return "%" + s.lower().replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%"
 
 
-def search_jobs(db: Database, f: JobFilters, include_sample: bool = False, *, user_id: int) -> tuple[list[dict], int]:
-    """Shared job list joined with THIS user's latest score, application and bookmark."""
+def search_jobs(db: Database, f: JobFilters, include_sample: bool = False, *, user_id: int,
+                career: dict | None = None) -> tuple[list[dict], int]:
+    """Shared job list joined with THIS user's latest score, application and bookmark. The default view shows only
+    jobs in the user's chosen industries/roles; `view=all` shows every job."""
+    from .. import taxonomy
     where, params = [], []
+    if f.view == "mine":
+        sql, sp = taxonomy.job_scope_sql(career)
+        where.append(sql[len(" AND "):])
+        params += sp
+    if f.industries:
+        where.append("j.industry IN (" + ",".join("?" * len(f.industries)) + ")")
+        params += f.industries
     if not include_sample:
         where.append("j.is_sample = 0")
     if not f.include_closed:
@@ -192,6 +206,7 @@ def search_jobs(db: Database, f: JobFilters, include_sample: bool = False, *, us
         "j.first_discovered_at, j.status AS job_status, j.apply_url, j.canonical_url, "
         "CASE WHEN ub.job_id IS NULL THEN 0 ELSE 1 END AS bookmarked, j.is_sample, "
         "e.name AS employer, e.id AS employer_id, e.mnc_key, e.sector, sc.score, sc.recommendation, "
+        "j.industry, j.role_key, "
         "sa.classification AS sponsorship, "
         "a.id AS app_id, a.status AS app_status " + base + f" ORDER BY {order} LIMIT ? OFFSET ?",
         params + [f.per_page, (f.page - 1) * f.per_page])

@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "JobAgent Application Companion",
+  "short_name": "JobAgent Companion",
+  "version": "1.0.0",
+  "description": "Fills job application forms on any employer site from your confirmed JobAgent profile. You review and press Submit.",
+  "action": { "default_popup": "popup.html", "default_title": "JobAgent Companion" },
+  "options_page": "options.html",
+  "background": { "service_worker": "background.js" },
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }
+}

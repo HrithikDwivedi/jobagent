@@ -32,7 +32,8 @@ class AccountError(Exception):
 
 def get_user(db: Database, user_id: int) -> dict | None:
     return db.one("SELECT id, username, email, full_name, role, status, created_at, last_login_at, approved_at, "
-                  "approved_by, created_ip FROM users WHERE id=?", (user_id,))
+                  "approved_by, created_ip, ai_access, ai_monthly_limit_usd, ai_granted_at FROM users WHERE id=?",
+                  (user_id,))
 
 
 def by_username(db: Database, username: str) -> dict | None:
@@ -53,10 +54,14 @@ def list_users(db: Database) -> list[dict]:
     """Account info and COUNTS only (no private content)."""
     rows = db.all(
         "SELECT u.id, u.username, u.email, u.full_name, u.role, u.status, u.created_at, u.last_login_at, "
-        "u.approved_at, "
+        "u.approved_at, u.ai_access, u.ai_monthly_limit_usd, u.ai_granted_at, "
+        "(SELECT COALESCE(SUM(c.cost_usd),0) FROM ai_usage c WHERE c.user_id=u.id AND c.at >= ?) AS ai_month_usd, "
+        "(SELECT COUNT(*) FROM support_tickets t WHERE t.user_id=u.id AND t.status IN ('open','answered')) "
+        "AS open_tickets, "
         "(SELECT COUNT(*) FROM applications a WHERE a.user_id=u.id AND a.is_sample=0) AS applications, "
         "(SELECT COUNT(*) FROM resume_versions r WHERE r.user_id=u.id) AS resumes "
-        "FROM users u ORDER BY CASE u.status WHEN 'pending' THEN 0 ELSE 1 END, u.id")
+        "FROM users u ORDER BY CASE u.status WHEN 'pending' THEN 0 ELSE 1 END, u.id",
+        (iso(utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)),))
     return rows
 
 
@@ -113,6 +118,55 @@ def change_status(db: Database, user_id: int, action: str, actor: str, actor_id:
         audit(db, actor=actor, entity="admin", entity_id=user_id, action=f"user_{action}",
               from_status=u["status"], to_status=to, detail={"username": u["username"]})
     return get_user(db, user_id)
+
+
+MAX_AI_LIMIT_USD = 1000.0
+
+
+def set_ai_access(db: Database, user_id: int, grant: bool, actor: str, *, actor_id: int | None = None,
+                  monthly_limit_usd: float | None = None) -> dict:
+    """Grant or revoke AI features for one account (the administrator always has them). An optional monthly
+    allowance (USD) caps that user's own AI spend on top of the installation-wide budget."""
+    if monthly_limit_usd is not None:
+        if not (0 <= float(monthly_limit_usd) <= MAX_AI_LIMIT_USD):
+            raise AccountError(f"The monthly AI allowance must be between 0 and {MAX_AI_LIMIT_USD:.0f} USD.")
+        monthly_limit_usd = round(float(monthly_limit_usd), 2)
+    with db.transaction():
+        u = get_user(db, user_id)
+        if not u:
+            raise AccountError("User not found.")
+        if u["role"] == "admin":
+            raise AccountError("The administrator always has AI access.")
+        if grant and u["status"] != "approved":
+            raise AccountError("Approve the account before granting AI access.")
+        if grant:
+            db.run("UPDATE users SET ai_access=1, ai_monthly_limit_usd=?, ai_granted_at=?, ai_granted_by=? WHERE id=?",
+                   (monthly_limit_usd, iso(), actor_id, user_id))
+        else:
+            db.run("UPDATE users SET ai_access=0, ai_monthly_limit_usd=NULL WHERE id=?", (user_id,))
+        audit(db, actor=actor, entity="admin", entity_id=user_id, action="ai_grant" if grant else "ai_revoke",
+              detail={"username": u["username"], "monthly_limit_usd": monthly_limit_usd if grant else None})
+    return get_user(db, user_id)
+
+
+def send_ai_access_notice(db: Database, mailer: Mailer, *, base_url: str | None, user: dict,
+                          granted: bool) -> dict | None:
+    if not user.get("email"):
+        return None
+    if granted:
+        limit = user.get("ai_monthly_limit_usd")
+        text = (f"Hello {_who(user)},\n\nAI assistance is now switched on for your JobAgent account: "
+                "job-requirement analysis, fact-guarded resume polishing, cover-letter drafts and Companion answer "
+                "drafts." + (f" Your monthly AI allowance is ${float(limit):.2f}." if limit is not None else "")
+                + (f"\n\nSign in: {base_url}/login" if base_url else "") + "\n")
+        subject = "AI assistance is enabled on your JobAgent account"
+    else:
+        text = (f"Hello {_who(user)},\n\nAI assistance has been switched off for your JobAgent account. Everything "
+                "else keeps working with the rule-based tools. Raise a request under Help & Support if you need it "
+                "back.\n")
+        subject = "AI assistance on your JobAgent account"
+    return mailer.send(db, Message(to=user["email"], subject=subject, text=text,
+                                   kind="ai_grant" if granted else "ai_revoke", related_user_id=user.get("id")))
 
 
 def delete_user(db: Database, user_id: int, actor: str) -> None:

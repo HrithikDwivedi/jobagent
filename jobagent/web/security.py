@@ -58,9 +58,10 @@ class EmailTaken(AuthError):
 
 def create_user(db: Database, username: str, password: str, actor: str = "setup", *, email: str | None = None,
                 full_name: str | None = None, role: str | None = None, status: str | None = None,
-                created_ip: str | None = None) -> int:
+                created_ip: str | None = None, needs_onboarding: bool = False) -> int:
     """Create an account. The FIRST account is always the approved administrator; later accounts default to
-    role 'user', status 'pending' (they cannot sign in until the administrator approves them)."""
+    role 'user', status 'pending' (they cannot sign in until the administrator approves them).
+    `needs_onboarding` (public sign-ups) sends the person through the onboarding questions at first sign-in."""
     username = username.strip().lower()
     if not USERNAME_RE.match(username):
         raise AuthError("Username must be 3-40 characters: letters, digits, dot, dash or underscore.")
@@ -81,9 +82,10 @@ def create_user(db: Database, username: str, password: str, actor: str = "setup"
         role = "admin" if first else (role or "user")
         status = "approved" if first else (status or "pending")
         uid = db.insert("INSERT INTO users(username, password_hash, created_at, password_changed_at, email, full_name, "
-                        "role, status, approved_at, created_ip) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        "role, status, approved_at, created_ip, onboarded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                         (username, _ph.hash(password), now, now, email, full_name, role, status,
-                         now if status == "approved" else None, (created_ip or "")[:64] or None))
+                         now if status == "approved" else None, (created_ip or "")[:64] or None,
+                         None if needs_onboarding else now))
         audit(db, actor=actor, entity="auth", entity_id=uid, action="create_user",
               detail={"username": username, "role": role, "status": status})
         if first:
@@ -197,7 +199,8 @@ def create_session(db: Database, user_id: int, absolute_hours: int) -> tuple[str
 def load_session(db: Database, token: str | None, idle_minutes: int) -> dict | None:
     if not token or len(token) > 200:
         return None
-    s = db.one("SELECT s.*, u.username, u.role, u.status AS user_status, u.full_name, u.email FROM sessions s "
+    s = db.one("SELECT s.*, u.username, u.role, u.status AS user_status, u.full_name, u.email, u.onboarded_at "
+               "FROM sessions s "
                "JOIN users u ON u.id=s.user_id WHERE s.token_hash=?", (_hash_token(token),))
     if not s:
         return None

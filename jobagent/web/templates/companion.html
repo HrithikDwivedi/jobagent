@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Application Companion{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Application Companion</h1>
+    <p>A browser extension that fills job application forms on <strong>any</strong> site (Workday, iCIMS, SmartRecruiters, Taleo, company portals, and the Greenhouse/Lever/Ashby forms auto-apply handed back) from your confirmed details, saved answers and tailored resume. It works inside your own browser, so sign-ins, CAPTCHAs and multi-page forms are no problem; you review everything and press Submit yourself.</p>
+  </div>
+  <a class="btn btn-primary" href="/companion/extension.zip" download>{{ m.ico('download') }} Download extension</a>
+</div>
+
+{% if new_token %}
+  <div class="alert alert-ok token-box" role="status">
+    <strong>Your new access token: copy it now, it will not be shown again.</strong>
+    <div class="token-row">
+      <input type="text" id="new-token" value="{{ new_token }}" readonly aria-label="New access token">
+      <button type="button" class="btn btn-sm" data-copy-target="#new-token">{{ m.ico('copy') }} Copy</button>
+    </div>
+    <p class="small mb0">Paste it into the extension's settings together with the address <code>{{ server }}</code>.</p>
+  </div>
+{% endif %}
+
+<div class="grid grid-2">
+  <section class="card" aria-labelledby="h-install">
+    <h2 id="h-install">Set up in 2 minutes</h2>
+    <ol class="setup-steps">
+      <li><strong>Download</strong> the extension (button above) and unzip it.</li>
+      <li>In Chrome, Edge or Brave open <code>chrome://extensions</code>, switch on <strong>Developer mode</strong>, press <strong>Load unpacked</strong> and choose the <code>jobagent-companion</code> folder.</li>
+      <li><strong>Create an access token</strong> below and paste it into the extension's settings (the JobAgent address is pre-filled: <code>{{ server }}</code>).</li>
+      <li>Open any job application form and click the JobAgent icon → <strong>Fill this form</strong>.</li>
+    </ol>
+    <h3>What it does on the page</h3>
+    <ul class="ticks">
+      <li>Fills name, contact details, links, location, work authorisation and sponsorship answers, notice period, salary and every saved screening answer.</li>
+      <li>Attaches your resume (the tailored one when the page matches a prepared application) and the cover letter.</li>
+      <li>Highlights fields: <span class="badge b-green">filled</span> <span class="badge b-amber">needs you</span>{% if ai.allowed %} <span class="badge b-blue">AI draft</span>{% endif %}.</li>
+      <li><strong>Save my answers</strong> learns the questions you answered yourself, so next time (and for auto-apply) they fill automatically.</li>
+      <li><strong>I've submitted it</strong> records the application in JobAgent with the confirmation it saw.</li>
+    </ul>
+    <p class="small muted">It never presses Submit, never fills passwords, bank or ID numbers, never answers voluntary diversity questions with personal data (it picks "prefer not to say" when offered) and never solves CAPTCHAs. Your token is stored only in your browser and sent only to this JobAgent address.</p>
+  </section>
+
+  <div class="stack">
+    <section class="card" aria-labelledby="h-ready">
+      <h2 id="h-ready">How ready your profile is</h2>
+      <dl class="facts">
+        <div><dt>Resume</dt><dd>{% if profile.has_resume %}<span class="badge b-green">Uploaded</span>{% else %}<a href="/studio">Upload your resume</a>{% endif %}</dd></div>
+        <div><dt>Saved screening answers</dt><dd>{{ profile.library_size }} · <a href="/answers">manage</a></dd></div>
+        <div><dt>Privacy boxes</dt><dd>{{ 'Ticked for you' if profile.accept_privacy_notices else 'Left for you' }}</dd></div>
+        <div><dt>AI answer drafts</dt><dd>{% if ai.allowed %}<span class="badge b-green">Available</span>{% else %}<span class="badge b-grey">Not enabled</span> <a href="/support?category=ai_access">request</a>{% endif %}</dd></div>
+      </dl>
+      {% if profile.missing %}
+        <div class="alert alert-warn mt mb0" role="note">Add <strong>{{ profile.missing|join(', ')|replace('_', ' ') }}</strong> in <a href="/settings#candidate">Settings → Candidate</a> so those questions fill automatically.</div>
+      {% endif %}
+    </section>
+
+    <section class="card" aria-labelledby="h-tokens">
+      <h2 id="h-tokens">Access tokens</h2>
+      <form method="post" action="/companion/tokens" class="row">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="field grow mb0"><label for="tn">Name this browser</label><input type="text" id="tn" name="name" maxlength="60" placeholder="e.g. Laptop Chrome" required></div>
+        <button type="submit" class="btn btn-primary" data-loading-text="Creating…">{{ m.ico('key') }} Create token</button>
+      </form>
+      <p class="small muted">Tokens last {{ token_days }} days. Revoke one if a device is lost; the extension using it stops working immediately.</p>
+      {% if tokens %}
+        <div class="table-wrap"><table>
+          <caption class="visually-hidden">Your access tokens</caption>
+          <thead><tr><th scope="col">Name</th><th scope="col">Token</th><th scope="col">Last used</th><th scope="col">Expires</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+          <tbody>
+          {% for t in tokens %}
+            <tr>
+              <td>{{ t.name }}</td>
+              <td><code>{{ t.prefix }}…</code></td>
+              <td class="nowrap">{{ m.dt(t.last_used_at) if t.last_used_at else 'Never' }}</td>
+              <td class="nowrap">{% if t.revoked_at %}<span class="badge b-grey">Revoked</span>{% elif not t.active %}<span class="badge b-red">Expired</span>{% else %}{{ m.d(t.expires_at) }}{% endif %}</td>
+              <td>{% if t.active %}
+                <form method="post" action="/companion/tokens/{{ t.id }}/revoke" class="inline">
+                  <input type="hidden" name="csrf" value="{{ csrf }}">
+                  <button type="submit" class="btn btn-sm btn-danger">Revoke</button>
+                </form>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table></div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

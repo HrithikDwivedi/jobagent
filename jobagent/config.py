@@ -30,6 +30,8 @@ class AppConfig:
     ai_provider: str = "none"
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
+    adzuna_app_id: str | None = None      # optional: Adzuna jobs API (every industry, many countries)
+    adzuna_app_key: str | None = None
     cron_secret: str | None = None
     setup_token: str | None = None
     deployment: str = "local"           # local | vercel
@@ -69,6 +71,7 @@ class AppConfig:
             "ai_provider": self.ai_provider,
             "openai_api_key": "set" if self.openai_api_key else "unset",
             "anthropic_api_key": "set" if self.anthropic_api_key else "unset",
+            "adzuna": "set" if (self.adzuna_app_id and self.adzuna_app_key) else "unset",
             "host": self.host,
             "port": self.port,
             "https": self.https,
@@ -95,6 +98,8 @@ def load_config(env_file: Path | None = None, **overrides) -> AppConfig:
         ai_provider=os.environ.get("JOBAGENT_AI_PROVIDER", "none").lower(),
         openai_api_key=os.environ.get("OPENAI_API_KEY") or None,
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
+        adzuna_app_id=os.environ.get("ADZUNA_APP_ID") or None,
+        adzuna_app_key=os.environ.get("ADZUNA_APP_KEY") or None,
         cron_secret=os.environ.get("CRON_SECRET") or None,
         setup_token=os.environ.get("JOBAGENT_SETUP_TOKEN") or None,
         deployment="vercel" if os.environ.get("VERCEL") else "local",

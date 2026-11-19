@@ -194,8 +194,8 @@ def _style_record(result: TailorResult, fp: str) -> dict:
 def _use_ai(ai, prefs: dict, user_id: int | None = None) -> bool:
     if ai is None or not getattr(ai, "available", False) or not prefs.get("ai_rewrite", True):
         return False
-    # AI is an administrator-only feature; an AIService built for another user is never used here.
-    # (AIService itself refuses non-admin users; this additionally stops one user's service being used for another.)
+    # AI needs an administrator grant; an AIService built for another user is never used here.
+    # (AIService itself refuses users without access; this additionally stops one user's service being used for another.)
     owner = getattr(ai, "user_id", None)
     return owner is None or owner == user_id
 

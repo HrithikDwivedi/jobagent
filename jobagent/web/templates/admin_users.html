@@ -1,13 +1,63 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m with context %}
-{% block title %}Users{% endblock %}
+{% block title %}Users & audience{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Users</h1>
-    <p>Approve who can sign in and manage accounts. You see account details and counts only, never another user's resumes, applications or settings.</p>
+    <h1>Users &amp; audience</h1>
+    <p>Who is using JobAgent and what they are looking for: every account is classified by the industries, roles and level it targets, and compared with the jobs available. Below: approvals, AI access and account management. You never see another user's resumes, applications or settings.</p>
   </div>
 </div>
+
+<section class="section" id="audience" aria-labelledby="h-aud">
+  <h2 id="h-aud" class="visually-hidden">Audience</h2>
+  <div class="kpis funnel">
+    {% for label, n in aud.funnel %}
+      <div class="kpi"><div class="kpi-label">{{ label }}</div><div class="kpi-value">{{ n }}</div>
+        {% if not loop.first and aud.funnel[0][1] %}<div class="kpi-hint">{{ (100 * n / aud.funnel[0][1])|round|int }}% of accounts</div>{% endif %}</div>
+    {% endfor %}
+  </div>
+
+  {% if aud.low %}
+    <div class="alert alert-warn" role="note"><strong>Not enough jobs for {{ aud.low|length }} segment{{ 's' if aud.low|length != 1 }}:</strong>
+      {% for sgt in aud.low %}{{ sgt.label }} ({{ sgt.jobs }} open job{{ 's' if sgt.jobs != 1 }} for {{ sgt.users }} user{{ 's' if sgt.users != 1 }}){{ ', ' if not loop.last }}{% endfor %}. See the suggestions on each card.</div>
+  {% endif %}
+
+  {% if aud.segments %}
+  <div class="segment-grid">
+    {% for sgt in aud.segments %}
+      <article class="card segment {{ 'seg-' ~ sgt.supply }}">
+        <header class="segment-head">
+          <span class="pick-ico" aria-hidden="true"><svg class="ico"><use href="/static/icons.svg#{{ sgt.icon }}"></use></svg></span>
+          <div class="grow"><h3 class="mb0"><a href="/admin/users?segment={{ sgt.id }}#all-users">{{ sgt.label }}</a></h3>
+            <div class="small muted">{{ sgt.users }} user{{ 's' if sgt.users != 1 }}{% if sgt.sponsorship %} · {{ sgt.sponsorship }} need sponsorship{% endif %}{% if sgt.switchers %} · {{ sgt.switchers }} career switcher{{ 's' if sgt.switchers != 1 }}{% endif %}</div></div>
+          <span class="badge {{ {'low': 'b-red', 'ok': 'b-amber', 'good': 'b-green'}[sgt.supply] }}" title="Open jobs per interested user">{{ {'low': 'Low supply', 'ok': 'Some supply', 'good': 'Good supply'}[sgt.supply] }}</span>
+        </header>
+        <dl class="segment-facts">
+          <div><dt>Open jobs</dt><dd>{{ sgt.jobs }}</dd></div>
+          <div><dt>New this week</dt><dd>{{ sgt.new_jobs }}</dd></div>
+          <div><dt>Jobs per user</dt><dd>{{ sgt.per_user }}</dd></div>
+        </dl>
+        {% if sgt.roles %}
+          <ul class="role-demand">
+            {% for r in sgt.roles[:4] %}<li><span class="truncate">{{ r.label }}</span><span class="small muted nowrap">{{ r.users }} want · {{ r.jobs }} jobs</span></li>{% endfor %}
+          </ul>
+        {% endif %}
+        {% if sgt.levels %}<p class="small muted mb0">Levels: {% for l, n in sgt.levels %}{{ l }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+        {% if sgt.countries %}<p class="small muted mb0">Targets: {% for c, n in sgt.countries %}{{ c }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+        {% if sgt.actions %}<ul class="seg-actions">{% for a in sgt.actions %}<li>{{ a }}</li>{% endfor %}</ul>{% endif %}
+      </article>
+    {% endfor %}
+  </div>
+  <div class="grid grid-2 mt">
+    <section class="card"><h3>Users by target industry</h3>{{ chart_industries|safe }}</section>
+    <section class="card"><h3>Users by experience level</h3>{{ chart_levels|safe }}</section>
+  </div>
+  {% else %}
+    <div class="card empty"><strong>No preferences yet</strong>Segments appear once users answer the onboarding questions (new sign-ups do this at their first sign-in).</div>
+  {% endif %}
+  {% if aud.unset %}<p class="small muted mt">{{ aud.unset }} approved account{{ 's' if aud.unset != 1 }} never set preferences (created before onboarding existed); they are classified from their preferred roles and marked <em>Inferred</em>. <a href="/admin/users?segment=unset#all-users">Show them</a>.</p>{% endif %}
+</section>
 
 <section class="card section" id="pending" aria-labelledby="h-pending">
   <h2 id="h-pending">Pending sign-ups <span class="badge b-amber{{ ' b-awaiting_approval' if pending }}">{{ pending|length }}</span></h2>
@@ -48,27 +98,73 @@
 </section>
 
 <section class="card section" id="all-users" aria-labelledby="h-users">
-  <h2 id="h-users">All accounts</h2>
+  <div class="card-title">
+    <h2 id="h-users">All accounts{% if segment %} · {{ segment_label }}{% endif %}</h2>
+    <form method="get" action="/admin/users#all-users" class="row">
+      <label for="seg" class="visually-hidden">Segment</label>
+      <select id="seg" name="segment" data-autosubmit>
+        <option value="">All segments ({{ all_count }})</option>
+        {% for sgt in aud.segments %}<option value="{{ sgt.id }}"{% if segment == sgt.id %} selected{% endif %}>{{ sgt.label }} ({{ sgt.users }})</option>{% endfor %}
+        <option value="unset"{% if segment == 'unset' %} selected{% endif %}>Preferences not set</option>
+      </select>
+      <noscript><button type="submit" class="btn btn-sm">Filter</button></noscript>
+    </form>
+  </div>
   <div class="table-wrap">
     <table>
       <caption class="visually-hidden">All accounts</caption>
       <thead><tr>
-        <th scope="col">Name</th><th scope="col">Email</th><th scope="col">Username</th><th scope="col">Role</th>
-        <th scope="col">Status</th><th scope="col">Created</th><th scope="col">Last sign-in</th>
-        <th scope="col" class="num">Applications</th><th scope="col" class="num">Resumes</th><th scope="col">Actions</th>
+        <th scope="col">Name</th><th scope="col">Looking for</th><th scope="col">Email</th><th scope="col">Username</th><th scope="col">Role</th>
+        <th scope="col">Status</th><th scope="col">AI access</th><th scope="col">Created</th><th scope="col">Last sign-in</th>
+        <th scope="col" class="num">Apps / CVs</th><th scope="col">Actions</th>
       </tr></thead>
       <tbody>
       {% for u in users %}
         <tr data-user-id="{{ u.id }}">
           <td>{{ u.full_name or '—' }}</td>
+          <td class="persona-cell">
+            {% set pr = u.profile %}
+            {% if pr %}
+              <strong class="persona">{{ pr.persona.label }}</strong>
+              {% if pr.roles or pr.custom %}<div class="small muted">{{ (pr.roles|map('role_label')|list + pr.custom)|join(', ') }}</div>{% endif %}
+              {% if pr.persona.tags %}<div class="tag-row">{% for t in pr.persona.tags %}<span class="badge {{ 'b-blue' if t == 'Career switcher' else ('b-amber' if t == 'Needs visa sponsorship' else 'b-grey') }}">{{ t }}</span>{% endfor %}</div>{% endif %}
+            {% else %}—{% endif %}
+          </td>
           <td>{{ u.email or '—' }}</td>
           <td>{{ u.username }}</td>
           <td>{{ 'Administrator' if u.role == 'admin' else 'User' }}</td>
           <td><span class="badge {{ {'approved': 'b-green', 'pending': 'b-amber', 'rejected': 'b-grey', 'suspended': 'b-red'}.get(u.status, 'b-grey') }}">{{ u.status|capitalize }}</span></td>
+          <td class="ai-cell">
+            {% if u.role == 'admin' %}
+              <span class="badge b-purple">Always</span>
+            {% elif u.ai_access %}
+              <span class="badge b-green">{{ m.ico('sparkle') }} On</span>
+              <div class="small muted nowrap">${{ '%.2f'|format(u.ai_month_usd or 0) }}{% if u.ai_monthly_limit_usd is not none %} / ${{ '%.2f'|format(u.ai_monthly_limit_usd) }}{% endif %}</div>
+              <form method="post" action="/admin/users/{{ u.id }}/ai-access" class="inline">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="hidden" name="grant" value="0">
+                <button type="submit" class="btn btn-sm">Remove</button>
+              </form>
+            {% elif u.status == 'approved' %}
+              <details class="disclosure">
+                <summary>Grant…</summary>
+                <div class="disclosure-body">
+                  <form method="post" action="/admin/users/{{ u.id }}/ai-access">
+                    <input type="hidden" name="csrf" value="{{ csrf }}">
+                    <input type="hidden" name="grant" value="1">
+                    <div class="field">
+                      <label for="lim-{{ u.id }}">Monthly allowance (USD) <span class="hint">(blank = no personal cap)</span></label>
+                      <input type="number" id="lim-{{ u.id }}" name="monthly_limit_usd" min="0" max="1000" step="0.01" placeholder="e.g. 2.00">
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary">Grant AI access</button>
+                  </form>
+                </div>
+              </details>
+            {% else %}<span class="badge b-grey">Off</span>{% endif %}
+          </td>
           <td class="nowrap">{{ m.d(u.created_at) }}</td>
           <td class="nowrap">{{ m.dt(u.last_login_at) }}</td>
-          <td class="num">{{ u.applications }}</td>
-          <td class="num">{{ u.resumes }}</td>
+          <td class="num nowrap">{{ u.applications }} / {{ u.resumes }}</td>
           <td>
             {% if u.role != 'admin' %}
             <div class="row" role="group" aria-label="Manage {{ u.username }}">

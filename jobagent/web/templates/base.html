@@ -20,17 +20,23 @@
   ("/applications", "Applications", "applications"),
   ("/answers", "Screening Answers", "check-circle"),
   ("/recruiters", "Recruiters", "mail"),
+  ("/companion", "Application Companion", "bolt"),
   ("/sponsorship", "Sponsorship & Relocation", "sponsorship"),
   ("/prep", "Skills & Prep", "prep"),
   ("/studio", "Resume Studio", "studio"),
   ("/runs", "Agent Runs", "runs"),
   ("/audit", "Audit Log", "audit"),
+  ("/welcome", "Job preferences", "target"),
   ("/settings", "Settings", "settings"),
+  ("/support", "Help & Support", "info"),
 ] %}
-{% if is_admin %}{% set nav_items = nav_items + [("/admin/users", "Users", "users")] %}{% endif %}
+{% set hide = nav_hide|default([]) %}
+{% set nav_items = nav_items|rejectattr(0, 'in', hide)|list %}
+{% if is_admin %}{% set nav_items = nav_items + [("/admin/users", "Users & audience", "users"), ("/admin/support", "Support desk", "shield-check")] %}{% endif %}
+{% set nav_badges = {"/support": support_unread|default(0), "/admin/support": support_open|default(0)} %}
 {% set display_name = user_name or user or '' %}
 {% set initials = (display_name.split()|map('first')|join('') if display_name.split() else '?')[:2]|upper %}
-<div class="app">
+<div class="app{{ ' app-focus' if focus_mode }}">
   <header class="topbar">
     <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"><svg class="ico"><use href="/static/icons.svg#logo"></use></svg></span> JobAgent</a>
     <div class="row">
@@ -38,13 +44,14 @@
       <button type="button" class="btn btn-sm" data-nav-toggle aria-controls="sidebar" aria-expanded="false"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#menu"></use></svg> Menu</button>
     </div>
   </header>
+  {% if not focus_mode %}
   <nav class="sidebar" id="sidebar" aria-label="Main navigation">
     <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"><svg class="ico"><use href="/static/icons.svg#logo"></use></svg></span> <span class="brand-name">JobAgent</span></a>
     <button type="button" class="icon-btn nav-close" data-nav-toggle aria-controls="sidebar" aria-label="Close menu"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
         <ul class="nav">
       {% for href, label, ico in nav_items %}
         {% set active = (path == href) if href == "/" else (path == href or path.startswith(href ~ "/") or (href == "/studio" and path.startswith("/letters"))) %}
-        <li><a href="{{ href }}"{% if active %} aria-current="page"{% endif %}><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="/static/icons.svg#{{ ico }}"></use></svg><span>{{ label }}</span></a></li>
+        <li><a href="{{ href }}"{% if active %} aria-current="page"{% endif %}><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="/static/icons.svg#{{ ico }}"></use></svg><span>{{ label }}</span>{% if nav_badges.get(href) %}<span class="nav-count" aria-label="{{ nav_badges.get(href) }} new">{{ nav_badges.get(href) }}</span>{% endif %}</a></li>
       {% endfor %}
     </ul>
     <div class="sidebar-foot">
@@ -65,6 +72,7 @@
       {% if deployment == 'vercel' %}<div class="muted small mt">Hosted on Vercel</div>{% endif %}
     </div>
   </nav>
+  {% endif %}
   <main class="main" id="main" tabindex="-1">
     {% if flash %}
       <div class="toast-region">

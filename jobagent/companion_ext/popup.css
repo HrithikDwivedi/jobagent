@@ -1,0 +1,24 @@
+:root { --bg:#fff; --fg:#0f172a; --muted:#64748b; --line:#e2e8f0; --primary:#0a5bb5; --ok:#15803d; --warn:#b45309; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0f172a; --fg:#e2e8f0; --muted:#94a3b8; --line:#1e293b; --primary:#3b82f6; } }
+* { box-sizing: border-box; }
+body { margin:0; width:360px; font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--fg); padding:14px; }
+header { display:flex; gap:10px; align-items:center; margin-bottom:12px; }
+.mark { width:30px; height:30px; border-radius:8px; background:#0f2341; color:#fff; display:grid; place-items:center; font-weight:700; }
+.muted { color:var(--muted); } .small { font-size:12px; }
+label { display:block; font-weight:600; margin:6px 0 4px; }
+select { width:100%; padding:6px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); }
+button { width:100%; margin-top:8px; padding:8px 10px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--fg); font-weight:600; cursor:pointer; }
+button.primary { background:var(--primary); border-color:var(--primary); color:#fff; }
+button.ghost { border-style:dashed; }
+button:disabled { opacity:.6; cursor:progress; }
+.row { display:flex; gap:8px; } .row button { flex:1; }
+.report { margin-top:10px; }
+.report .ok { color:var(--ok); font-weight:600; } .report .err { color:#b91c1c; }
+.report ul, #learn-list { padding-left:0; list-style:none; margin:6px 0; max-height:220px; overflow:auto; }
+.report li { border-left:3px solid var(--warn); padding:3px 8px; margin:4px 0; }
+.report li small { display:block; color:var(--muted); }
+#learn-list li { display:flex; gap:6px; align-items:flex-start; margin:4px 0; }
+#learn-list li span { word-break:break-word; } #learn-list li em { color:var(--muted); font-style:normal; display:block; }
+.foot { margin-top:12px; }
+body.options { width:auto; max-width:480px; margin:24px auto; }
+input { width:100%; padding:7px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); }

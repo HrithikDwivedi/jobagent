@@ -75,6 +75,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
                                               "airwallex", "hopper", "koho", "1password", "cohere", "xero",
                                               "benevity", "jobber", "lightspeedhq", "miro", "notion", "snowflake"]},
         "uk_sponsor_register": {"enabled": True, "max_age_days": 7},
+        # every-industry sources, queried for the industries/roles users chose in onboarding
+        "jobicy": {"enabled": True, "max_pages": 1},          # public remote-jobs API (credit + link to source)
+        "adzuna": {"enabled": True, "max_pages": 1},          # official API; active only with ADZUNA_APP_ID/KEY
     },
     "ai": {
         "enabled": True,
@@ -109,6 +112,10 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     # Reusable answers to application-form questions ([{question, answer}]); auto-apply uses them for any form that
     # asks the same (or a near-identical) question. Filled from Settings -> Screening answers.
     "answer_library": [],
+    # What the user is looking for (onboarding): up to 3 industries and 3 roles (taxonomy ids) plus roles typed in
+    # their own words, experience level and employment types. Empty = legacy software-engineering profile.
+    "career": {"industries": [], "roles": [], "custom_roles": [], "experience": None,
+               "employment_types": ["full_time"], "onboarded_at": None},
     "resume_style": {
         "company_type": "auto",             # auto | big_tech | enterprise | startup
         "spelling": "auto",                 # auto (by country) | uk | us
@@ -180,6 +187,49 @@ def _str_list(v: Any, name: str, max_items: int = 50, max_len: int = 60) -> list
     return out
 
 
+CURRENCIES = ("EUR", "GBP", "CHF", "SEK", "DKK", "NOK", "PLN", "CZK", "USD", "CAD", "AUD", "NZD", "INR", "AED",
+              "SGD", "JPY", "ZAR")
+MAX_CAREER_PICKS = 3
+
+
+def _validate_career(value: Any) -> dict:
+    from . import taxonomy
+    if not isinstance(value, dict):
+        raise SettingsError("career must be an object")
+    inds = [i for i in dict.fromkeys(_str_list(value.get("industries") or [], "career.industries", 10, 40))]
+    if len(inds) > MAX_CAREER_PICKS:
+        raise SettingsError(f"Choose at most {MAX_CAREER_PICKS} industries.")
+    bad = [i for i in inds if i not in taxonomy.BY_ID]
+    if bad:
+        raise SettingsError(f"Unknown industry {bad[0]!r}.")
+    roles = [r for r in dict.fromkeys(_str_list(value.get("roles") or [], "career.roles", 10, 40))]
+    bad = [r for r in roles if r not in taxonomy.ROLES]
+    if bad:
+        raise SettingsError(f"Unknown role {bad[0]!r}.")
+    outside = [r for r in roles if taxonomy.ROLES[r][0] not in inds]
+    if outside:
+        raise SettingsError(f"The role '{taxonomy.role_label(outside[0])}' is not in the industries you chose.")
+    custom = []
+    for c in value.get("custom_roles") or []:
+        c = " ".join(str(c).split())[:60]
+        if c and not re.fullmatch(r"[\w .,&/+()'-]{2,60}", c):
+            raise SettingsError("Typed roles may only contain letters, digits and simple punctuation.")
+        if c and c.lower() not in [x.lower() for x in custom]:
+            custom.append(c)
+    if len(roles) + len(custom) > MAX_CAREER_PICKS:
+        raise SettingsError(f"Choose at most {MAX_CAREER_PICKS} roles in total.")
+    level = value.get("experience")
+    if level is not None and level not in taxonomy.EXPERIENCE:
+        raise SettingsError("Unknown experience level.")
+    types = [t for t in dict.fromkeys(_str_list(value.get("employment_types") or ["full_time"],
+                                               "career.employment_types", 4, 20))]
+    if not types or any(t not in taxonomy.EMPLOYMENT_TYPES for t in types):
+        raise SettingsError("Choose at least one valid employment type.")
+    done = value.get("onboarded_at")
+    return {"industries": inds, "roles": roles, "custom_roles": custom, "experience": level,
+            "employment_types": types, "onboarded_at": str(done)[:40] if done else None}
+
+
 def validate(key: str, value: Any) -> Any:
     """Validate and normalise one setting. Raises SettingsError."""
     if key not in DEFAULT_SETTINGS:
@@ -195,7 +245,7 @@ def validate(key: str, value: Any) -> Any:
     if key == "min_salary":
         return _int(value, key, 0, 1_000_000)
     if key == "currency":
-        if value not in ("EUR", "GBP", "CHF", "SEK", "DKK", "PLN", "CZK", "USD", "INR"):
+        if value not in CURRENCIES:
             raise SettingsError("Unsupported currency")
         return value
     if key == "sponsorship_policy":
@@ -336,6 +386,8 @@ def validate(key: str, value: Any) -> Any:
         return {"enabled": bool(value.get("enabled", False)), "time": t, "days": days}
     if key == "candidate":
         return _validate_candidate(value)
+    if key == "career":
+        return _validate_career(value)
     if key == "answer_library":
         if not isinstance(value, list):
             raise SettingsError("answer_library must be a list")
@@ -491,16 +543,52 @@ def discovery_settings(db: Database) -> dict[str, Any]:
         return s
     tiers = {"tier1": [], "tier2": [], "tier3": []}
     india = False
+    scope = {"legacy": False, "industries": [], "roles": [], "custom": [], "queries": []}
     for uid in users:
         us = get_all(db, uid)
         india = india or bool(us["include_india_remote"])
+        _merge_scope(scope, us.get("career") or {})
         for t in tiers:
             for c in us["target_countries"][t]:
                 if c not in tiers["tier1"] + tiers["tier2"] + tiers["tier3"]:
                     tiers[t].append(c)
     s["target_countries"] = tiers
     s["include_india_remote"] = india
+    s["career_scope"] = scope
     return s
+
+
+def personal_discovery_settings(db: Database, user_id: int) -> dict[str, Any]:
+    """Discovery settings for ONE user's first search: global keys + that user's countries and career scope."""
+    s = get_all(db, None)
+    us = get_all(db, user_id)
+    s["target_countries"] = us["target_countries"]
+    s["include_india_remote"] = us["include_india_remote"]
+    scope = {"legacy": False, "industries": [], "roles": [], "custom": [], "queries": []}
+    _merge_scope(scope, us.get("career") or {})
+    s["career_scope"] = scope
+    return s
+
+
+def _merge_scope(scope: dict, career: dict) -> None:
+    """Union of what every user wants. A user without a career profile keeps the original software scope."""
+    from . import taxonomy
+    if not taxonomy.has_career(career):
+        scope["legacy"] = True
+        if "software_engineer" not in scope["roles"]:
+            scope["queries"].append(("technology", "software engineer"))
+        return
+    for i in career.get("industries") or []:
+        if i not in scope["industries"]:
+            scope["industries"].append(i)
+    for r in career.get("roles") or []:
+        if r not in scope["roles"]:
+            scope["roles"].append(r)
+            scope["queries"].append((taxonomy.ROLES[r][0], taxonomy.ROLES[r][1].query))
+    for c in career.get("custom_roles") or []:
+        if c.lower() not in [x.lower() for x in scope["custom"]]:
+            scope["custom"].append(c)
+            scope["queries"].append(((career.get("industries") or [None])[0], c))
 
 
 def all_target_countries(s: dict) -> list[str]:

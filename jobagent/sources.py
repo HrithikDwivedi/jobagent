@@ -1,5 +1,6 @@
 """Job source adapters. Only official/public job-board APIs intended for programmatic access are used:
-Greenhouse Job Board API, Lever Postings API, Ashby Posting API and the Arbeitnow public API.
+Greenhouse Job Board API, Lever Postings API, Ashby Posting API, the Arbeitnow and Jobicy public APIs and (with
+a free key) the Adzuna API.
 No HTML scraping, no logins, no CAPTCHA handling."""
 from __future__ import annotations
 
@@ -244,8 +245,117 @@ class ArbeitnowSource(Source):
         return SourceResult(self.name, None, jobs, complete, error)
 
 
-def build_sources(http: HttpClient, conf: dict) -> list[tuple[Source, str | None]]:
-    """Expand settings['sources'] into (adapter, board) work items."""
+class JobicySource(Source):
+    """Jobicy public remote-jobs API (every industry). Terms: credit Jobicy and send applicants to the original job
+    URL (we always link to it). Max 1 request per second per IP, so requests are spaced out."""
+    name = "jobicy"
+    URL = "https://jobicy.com/api/v2/remote-jobs"
+
+    def fetch(self, board: str | None = None) -> SourceResult:
+        params = {"count": "50"}
+        if board:
+            params["industry"] = board
+        self.http.sleep(1.1)                       # Jobicy allows one request per second
+        try:
+            data = self.http.get_json(self.URL, params=params)
+        except FetchError as e:
+            return SourceResult(self.name, board, [], False, str(e))
+        if not isinstance(data, dict) or not isinstance(data.get("jobs"), list):
+            return SourceResult(self.name, board, [], False, "Malformed Jobicy response")
+        jobs = []
+        for j in data["jobs"]:
+            if not isinstance(j, dict) or not j.get("id") or not j.get("jobTitle"):
+                continue
+            inds = j.get("jobIndustry") or []
+            if isinstance(inds, str):
+                inds = [inds]
+            geo = str(j.get("jobGeo") or "").strip()
+            smin, smax = j.get("annualSalaryMin"), j.get("annualSalaryMax")
+            types = j.get("jobType") or []
+            cur = j.get("salaryCurrency")
+            jobs.append(RawJob(
+                source=self.name, source_job_id=str(j["id"]), title=html_to_text(str(j["jobTitle"])).strip()[:300],
+                company=str(j.get("companyName") or "Unknown"),
+                location_raw=("Remote" + (f" - {geo}" if geo and geo.lower() != "anywhere" else "")),
+                url=j.get("url"), apply_url=j.get("url"),
+                description_text=html_to_text(j.get("jobDescription") or j.get("jobExcerpt") or ""),
+                published_at=_iso(str(j.get("pubDate") or "").replace(" ", "T") or None),
+                employment_type=(", ".join(str(t) for t in types) if isinstance(types, list) else str(types)) or None,
+                remote_hint="remote",
+                salary_min=float(smin) if isinstance(smin, (int, float)) else None,
+                salary_max=float(smax) if isinstance(smax, (int, float)) else None,
+                salary_currency=str(cur)[:3] if cur else None,
+                salary_period="year" if smax else None,
+                extra={"industries": [str(x) for x in inds][:5], "level": j.get("jobLevel"), "via": "Jobicy"},
+            ))
+        # one page per industry (newest 50): never a complete view of the board, so closures are not inferred
+        return SourceResult(self.name, board, jobs, False)
+
+
+ADZUNA_COUNTRIES = {"GB": "gb", "US": "us", "AT": "at", "AU": "au", "BE": "be", "BR": "br", "CA": "ca", "CH": "ch",
+                    "DE": "de", "ES": "es", "FR": "fr", "IN": "in", "IT": "it", "MX": "mx", "NL": "nl", "NZ": "nz",
+                    "PL": "pl", "SG": "sg", "ZA": "za"}
+
+
+class AdzunaSource(Source):
+    """Adzuna official jobs API (every industry; needs a free app id/key). `board` = "<country>|<what>"."""
+    name = "adzuna"
+    URL = "https://api.adzuna.com/v1/api/jobs/{country}/search/{page}"
+
+    def __init__(self, http: HttpClient, app_id: str, app_key: str, max_pages: int = 1):
+        super().__init__(http)
+        self.app_id, self.app_key = app_id, app_key
+        self.max_pages = max(1, min(int(max_pages or 1), 5))
+
+    def fetch(self, board: str | None = None) -> SourceResult:
+        country, _, what = (board or "").partition("|")
+        if country not in ADZUNA_COUNTRIES.values() or not what:
+            return SourceResult(self.name, board, [], False, "invalid Adzuna query")
+        jobs, error = [], None
+        for page in range(1, self.max_pages + 1):
+            try:
+                data = self.http.get_json(self.URL.format(country=country, page=page), params={
+                    "app_id": self.app_id, "app_key": self.app_key, "results_per_page": "50", "what": what,
+                    "max_days_old": "30", "content-type": "application/json"})
+            except FetchError as e:
+                error = str(e).replace(self.app_key, "***").replace(self.app_id, "***")
+                break
+            if not isinstance(data, dict) or not isinstance(data.get("results"), list):
+                error = "Malformed Adzuna response"
+                break
+            for j in data["results"]:
+                if not isinstance(j, dict) or not j.get("id") or not j.get("title"):
+                    continue
+                loc = j.get("location") if isinstance(j.get("location"), dict) else {}
+                area = loc.get("area") if isinstance(loc.get("area"), list) else []
+                cat = (j.get("category") or {}).get("label") if isinstance(j.get("category"), dict) else None
+                company = j.get("company") if isinstance(j.get("company"), dict) else {}
+                ctime, ctype = j.get("contract_time"), j.get("contract_type")
+                jobs.append(RawJob(
+                    source=self.name, source_job_id=str(j["id"]), title=html_to_text(str(j["title"])).strip()[:300],
+                    company=str(company.get("display_name") or "Unknown"),
+                    location_raw=", ".join(reversed([str(a) for a in area[1:]])) or loc.get("display_name"),
+                    url=j.get("redirect_url"), apply_url=j.get("redirect_url"),
+                    description_text=html_to_text(j.get("description") or ""),
+                    published_at=_iso(j.get("created")),
+                    employment_type={"full_time": "full_time", "part_time": "part_time"}.get(ctime)
+                    or ("contract" if ctype == "contract" else None),
+                    country_hint=next((k for k, v in ADZUNA_COUNTRIES.items() if v == country), None),
+                    salary_min=float(j["salary_min"]) if isinstance(j.get("salary_min"), (int, float)) else None,
+                    salary_max=float(j["salary_max"]) if isinstance(j.get("salary_max"), (int, float)) else None,
+                    salary_period="year" if j.get("salary_max") else None,
+                    extra={"category": cat, "via": "Adzuna"},
+                ))
+            if len(data["results"]) < 50:
+                break
+        return SourceResult(self.name, board, jobs, False, error)
+
+
+def build_sources(http: HttpClient, conf: dict, scope: dict | None = None, countries: list[str] | None = None,
+                  adzuna_keys: tuple = (None, None), max_queries: int = 40) -> list[tuple[Source, str | None]]:
+    """Expand settings['sources'] into (adapter, board) work items. `scope` (discovery_settings career_scope) adds
+    every-industry sources for what users chose: one Jobicy feed per industry and one Adzuna search per
+    (role, target country), capped at `max_queries`."""
     items: list[tuple[Source, str | None]] = []
     if conf.get("greenhouse", {}).get("enabled"):
         gh = GreenhouseSource(http)
@@ -258,4 +368,34 @@ def build_sources(http: HttpClient, conf: dict) -> list[tuple[Source, str | None
         items += [(ab, b) for b in conf["ashby"].get("boards", [])]
     if conf.get("arbeitnow", {}).get("enabled"):
         items.append((ArbeitnowSource(http, conf["arbeitnow"].get("max_pages", 3)), None))
+    items += targeted_sources(http, conf, scope, countries, adzuna_keys, max_queries)
+    return items
+
+
+def targeted_sources(http: HttpClient, conf: dict, scope: dict | None, countries: list[str] | None,
+                     adzuna_keys: tuple = (None, None), max_queries: int = 40) -> list[tuple[Source, str | None]]:
+    """Only the every-industry, query-based sources for a scope (used for a new user's first search too)."""
+    if not scope or not (scope.get("industries") or scope.get("custom")):
+        return []
+    from . import taxonomy
+    items: list[tuple[Source, str | None]] = []
+    if conf.get("jobicy", {"enabled": True}).get("enabled", True):
+        jb = JobicySource(http)
+        slugs: list[str] = []
+        for ind in scope.get("industries") or []:
+            for slug in (taxonomy.BY_ID[ind].jobicy if ind in taxonomy.BY_ID else ()):
+                if slug not in slugs:
+                    slugs.append(slug)
+        items += [(jb, s) for s in slugs[:12]]
+    app_id, app_key = adzuna_keys
+    if app_id and app_key and conf.get("adzuna", {"enabled": True}).get("enabled", True):
+        az = AdzunaSource(http, app_id, app_key, conf.get("adzuna", {}).get("max_pages", 1))
+        codes = [ADZUNA_COUNTRIES[c] for c in (countries or []) if c in ADZUNA_COUNTRIES]
+        qs: list[str] = []
+        for _ind, q in scope.get("queries") or []:
+            for cc in codes:
+                b = f"{cc}|{q}"
+                if b not in qs:
+                    qs.append(b)
+        items += [(az, b) for b in qs[:max_queries]]
     return items

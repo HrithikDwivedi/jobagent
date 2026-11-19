@@ -76,6 +76,7 @@
 {# ------------------------------------------------------------ search #}
 <section class="card settings-section" id="search" aria-labelledby="h-search">
   <h2 id="h-search">Search preferences</h2>
+  <p class="small"><a href="/welcome/2">Change industries, roles, level and countries with the guided questions</a> (recommended). The fields below are the detailed version.</p>
   <form method="post" action="/settings">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <input type="hidden" name="section" value="search">
@@ -304,7 +305,7 @@
     </div>
     <div class="field"><label for="rs-ats">ATS score target</label><input type="number" id="rs-ats" name="ats_target" min="60" max="100" value="{{ rs.ats_target or 95 }}"></div>
     <label class="check"><input type="checkbox" name="one_page" value="1"{% if rs.one_page %} checked{% endif %}> Always fit on one page</label>
-    <label class="check"><input type="checkbox" name="ai_rewrite" value="1"{% if rs.ai_rewrite %} checked{% endif %}> Let AI polish the wording (fact-guarded){% if not is_admin %} <span class="hint">(AI is available to the administrator only; your resumes use the rule-based tailoring)</span>{% endif %}</label>
+    <label class="check"><input type="checkbox" name="ai_rewrite" value="1"{% if rs.ai_rewrite %} checked{% endif %}> Let AI polish the wording (fact-guarded){% if not has_ai %} <span class="hint">(AI is not enabled for your account, so your resumes use the rule-based tailoring. <a href="/support?category=ai_access">Request AI access</a>)</span>{% endif %}</label>
     <label class="check"><input type="checkbox" name="tailor_per_job" value="1"{% if rs.tailor_per_job %} checked{% endif %}> Tailor a separate resume for every job</label>
     <div class="mt"><button type="submit" class="btn btn-primary">Save resume style</button></div>
   </form>

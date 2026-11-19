@@ -10,7 +10,10 @@ return 404 to everyone else. The administrator manages accounts but sees only ac
 from __future__ import annotations
 
 import csv
+import functools
 import hashlib
+import inspect
+import json
 import io
 import logging
 import re
@@ -30,14 +33,20 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from .. import agent as agent_mod
 from .. import answers as answers_mod
+from .. import audience
+from .. import companion
+from .. import helpdesk
+from .. import onboarding as onboarding_mod
+from .. import taxonomy
 from .. import outreach
 from .. import applications as apps
 from .. import settings as settings_mod
 from .. import users as users_mod
-from ..ai import AIService, make_provider
+from ..ai import AIService, ai_access, make_provider
 from ..config import AppConfig, acceptable_base_url, load_config, validate_config
 from ..db import Database, DatabaseError, audit, dumps, iso, loads, verify_audit_chain
 from ..http import HttpClient
+from ..ingest import classify_pending
 from ..mailer import Mailer, Message, make_mailer
 from ..mailer import valid_email as mailer_valid_email
 from ..resume import store as resume_store
@@ -50,7 +59,10 @@ BASE_DIR = Path(__file__).parent
 _log = logging.getLogger("jobagent.web")
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-PUBLIC_PATHS = ("/login", "/logout", "/signed-out", "/signup", "/signup/", "/setup", "/healthz", "/static/", "/api/cron/", "/favicon.ico")
+# paths a signed-in user who has not answered the onboarding questions may still open
+ONBOARDING_OPEN = ("/welcome", "/logout", "/signed-out", "/static/", "/support", "/healthz", "/favicon.ico",
+                   "/api/companion/")
+PUBLIC_PATHS = ("/login", "/logout", "/signed-out", "/signup", "/signup/", "/setup", "/healthz", "/static/", "/api/cron/", "/api/companion/", "/favicon.ico")
 MAX_EVIDENCE_BYTES = 5 * 1024 * 1024
 EVIDENCE_TYPES = {b"\x89PNG": ("image/png", ".png"), b"\xff\xd8\xff": ("image/jpeg", ".jpg"),
                   b"%PDF": ("application/pdf", ".pdf")}
@@ -63,10 +75,13 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
     app = FastAPI(title="JobAgent", docs_url=None, redoc_url=None, openapi_url=None)
     templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
     templates.env.autoescape = True
+    templates.env.filters["role_label"] = taxonomy.role_label
+    templates.env.filters["industry_label"] = taxonomy.industry_label
     signer = URLSafeTimedSerializer(cfg.secret_key or secrets.token_hex(32), salt="flash")
     state = {"migrated": False, "bg_run": None}
     lock = threading.Lock()
     app.state.mailer = mailer or make_mailer(cfg)
+    app.state.http_factory = lambda: HttpClient(user_agent=cfg.user_agent)
 
     def get_db(request: Request) -> Database:
         if not hasattr(request.state, "db"):
@@ -74,6 +89,10 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
             with lock:
                 if not state["migrated"]:
                     db.migrate()
+                    try:
+                        classify_pending(db)
+                    except Exception:  # best-effort; jobs are classified again by the next agent run
+                        pass
                     state["migrated"] = True
             request.state.db = db
         return request.state.db
@@ -92,6 +111,30 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
             flash_cookie(resp, kind, msg)
         return resp
 
+    def _nav_badges(request: Request, sess: dict | None) -> dict:
+        """Per-page extras for the layout: whether this user has AI, unread support replies / open tickets."""
+        if not sess:
+            return {"has_ai": False, "support_unread": 0, "support_open": 0}
+        try:
+            db = get_db(request)
+            me = int(sess["user_id"])
+            admin = sess.get("role") == "admin"
+            us = settings_mod.get_all(db, me)
+            car = us.get("career") or {}
+            hide = []
+            if taxonomy.has_career(car) and not set(car.get("industries") or []) & {"technology", "finance",
+                                                                                     "business"}:
+                hide.append("/mnc")                       # the Top-MNC catalogue is tech, banks and consulting
+            if not (us.get("candidate") or {}).get("requires_sponsorship_outside", True):
+                hide.append("/sponsorship")               # no visa needed: sponsorship pages are noise
+            return {"nav_hide": hide, "career_summary": onboarding_mod.summary(db, me),
+                    "has_ai": ai_access(db, me)["allowed"],
+                    "support_unread": helpdesk.unread_for_user(db, me),
+                    "support_open": int(db.scalar("SELECT COUNT(*) FROM support_tickets WHERE status='open'") or 0)
+                    if admin else 0}
+        except Exception:
+            return {"has_ai": False, "support_unread": 0, "support_open": 0}
+
     def render(request: Request, name: str, ctx: dict, status: int = 200) -> HTMLResponse:
         flash = None
         raw = request.cookies.get("ja_flash")
@@ -106,7 +149,7 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
                 "is_admin": bool(sess and sess.get("role") == "admin"),
                 "csrf": sess["csrf_token"] if sess else None, "flash": flash, "path": request.url.path,
                 "labels": apps.STATUS_LABELS, "countries": settings_mod.COUNTRY_NAMES,
-                "deployment": cfg.deployment, "today": date.today().isoformat()}
+                "deployment": cfg.deployment, "today": date.today().isoformat(), **_nav_badges(request, sess)}
         resp = templates.TemplateResponse(request, name, {**base, **ctx}, status_code=status)
         if raw:
             resp.delete_cookie("ja_flash", path="/")
@@ -174,6 +217,11 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
                 else:
                     resp = RedirectResponse("/login?next=" + quote(path + (("?" + request.url.query)
                                                                            if request.url.query else "")), 303)
+            elif (request.state.session is not None and not request.state.session.get("onboarded_at")
+                  and not any(path == p or path.startswith(p if p.endswith("/") else p + "/") or path == p
+                              for p in ONBOARDING_OPEN)):
+                # new accounts answer the onboarding questions before anything else
+                resp = RedirectResponse("/welcome", status_code=303)
             elif path.startswith("/admin") and not is_admin(request):
                 # admin-only area: indistinguishable from a missing page for everyone else
                 resp = PlainTextResponse("Not found", status_code=404) if request.method != "GET" else \
@@ -337,7 +385,8 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         try:
             new_id = security.create_user(db, data.get("username", ""), data.get("password", ""),
                                           actor="signup", email=data.get("email", ""), full_name=full_name,
-                                          role="user", status="pending", created_ip=ip)
+                                          role="user", status="pending", created_ip=ip,
+                                          needs_onboarding=True)
         except security.EmailTaken:
             # Do not reveal that this email already has an account: show the same confirmation, create nothing.
             audit(db, actor="anonymous", entity="auth", entity_id=None, action="signup_duplicate_email")
@@ -450,7 +499,7 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         db = get_db(request)
         me = uid(request)
         f = queries.JobFilters.from_query(request.query_params)
-        rows, total = queries.search_jobs(db, f, user_id=me)
+        rows, total = queries.search_jobs(db, f, user_id=me, career=settings_mod.get(db, "career", me))
         selected_id = request.query_params.get("job")
         selected = None
         if selected_id and selected_id.isdigit():
@@ -465,6 +514,10 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
                      "job_type": queries.JOB_TYPES, "remote": queries.REMOTE_TYPES, "sponsorship": queries.SPONSORSHIP,
                      "rec": queries.RECOMMENDATIONS, "sort": queries.SORTS, "status": queries.APP_STATUSES},
             "target_countries": settings_mod.all_target_countries(settings_mod.get_all(db, me)) + ["IN"],
+            "industry_opts": [(i.id, i.label) for i in taxonomy.INDUSTRIES],
+            "industry_facets": {r["industry"]: r["n"] for r in db.all(
+                "SELECT industry, COUNT(*) AS n FROM jobs WHERE status='open' AND is_sample=0 AND industry IS NOT NULL "
+                "GROUP BY industry")},
         })
 
     @app.get("/jobs/export.csv")
@@ -480,7 +533,7 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         page = 1
         while True:
             f.page = page
-            rows, total = queries.search_jobs(db, f, user_id=uid(request))
+            rows, total = queries.search_jobs(db, f, user_id=uid(request), career=settings_mod.get(db, "career", uid(request)))
             for r in rows:
                 vals = [r["id"], r["employer"], r["title"], r["country"], r["city"], r["remote_type"],
                         r["employment_type"], r["seniority"], r["score"], r["recommendation"], r["sponsorship"],
@@ -594,7 +647,8 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         if not f.mnc:
             f.mnc = ["all"]
         f.per_page = 15
-        top_rows, top_total = queries.search_jobs(db, f, user_id=uid(request))
+        top_rows, top_total = queries.search_jobs(db, f, user_id=uid(request),
+                                                  career=settings_mod.get(db, "career", uid(request)))
         return render(request, "mnc.html", {"companies": shown, "sectors": sectors, "sector": sector,
                                             "top_rows": top_rows, "top_total": top_total,
                                             "mnc_settings": settings_mod.get(db, "mnc", None)})
@@ -1342,15 +1396,535 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         return Response(dumps(data), media_type="application/json",
                         headers={"Content-Disposition": 'attachment; filename="jobagent-export.json"'})
 
+    # ------------------------------------------------------------------ onboarding (first sign-in questions)
+    WELCOME_TITLES = {
+        1: ("Let's set up your job search", "Start with your resume (optional). It helps us rank jobs by how well you "
+                                            "fit and fill application forms for you."),
+        2: ("Which industries are you targeting?", "Choose up to 3. We only fetch and show jobs from these."),
+        3: ("Which roles do you want?", "Choose up to 3 roles in your industries, or type your own."),
+        4: ("Your experience and the jobs you want", "So we show roles at the right level."),
+        5: ("Where do you want to work?", "Countries, way of working and visa needs decide which jobs fit you."),
+    }
+
+    def _welcome_ctx(request: Request, step: int, error: str | None = None) -> dict:
+        db = get_db(request)
+        me = uid(request)
+        s = settings_mod.get_all(db, me)
+        c = s.get("career") or {}
+        resume = resume_store.canonical(db, user_id=me)
+        suggest = taxonomy.suggest_from_resume((resume or {}).get("structured")) if resume else \
+            {"industries": [], "roles": []}
+        cand = s.get("candidate") or {}
+        chosen = settings_mod.all_target_countries(s) if (c.get("onboarded_at") or onboarding_mod.missing(db, me)
+                                                          .count(5) == 0) else []
+        wa = cand.get("work_authorization") or {}
+        if not c.get("onboarded_at") and 5 in onboarding_mod.missing(db, me):
+            sponsorship = ""
+        elif not cand.get("requires_sponsorship_outside"):
+            sponsorship = "no"
+        elif any(x in wa for x in chosen):
+            sponsorship = "some"
+        else:
+            sponsorship = "yes"
+        answered = [n for n in (2, 3, 4, 5) if n not in onboarding_mod.missing(db, me)] + ([1] if resume else [])
+        sess = request.state.session
+        return {
+            "step": step, "steps": onboarding_mod.STEPS, "titles": WELCOME_TITLES, "error": error,
+            "editing": bool(sess.get("onboarded_at")), "focus_mode": not sess.get("onboarded_at"),
+            "first_name": ((sess.get("full_name") or "").split() or [""])[0],
+            "career": {"industries": c.get("industries") or [], "roles": c.get("roles") or [],
+                       "custom_roles": c.get("custom_roles") or [], "experience": c.get("experience"),
+                       "employment_types": c.get("employment_types") or ["full_time"]},
+            "industries": taxonomy.INDUSTRIES, "suggest": suggest, "resume": resume,
+            "chosen_industries": [taxonomy.BY_ID[i] for i in c.get("industries") or [] if i in taxonomy.BY_ID],
+            "experience": taxonomy.EXPERIENCE, "employment_types": taxonomy.EMPLOYMENT_TYPES,
+            "countries_sorted": sorted(settings_mod.COUNTRY_NAMES.items(), key=lambda kv: kv[1]),
+            "chosen_countries": chosen, "max_countries": onboarding_mod.MAX_COUNTRIES,
+            "arrangements": s.get("work_arrangements") or ["onsite", "hybrid", "remote"],
+            "relocate": cand.get("willing_to_relocate", True), "sponsor_choices": onboarding_mod.SPONSOR_CHOICES,
+            "sponsorship": sponsorship, "authorised": [x for x in wa],
+            "current_location": cand.get("current_location"), "min_salary": s.get("min_salary") or "",
+            "currency": s.get("currency"), "currencies": settings_mod.CURRENCIES, "answered": answered,
+        }
+
+    @app.get("/welcome", response_class=HTMLResponse)
+    def welcome_start(request: Request):
+        db = get_db(request)
+        if request.state.session.get("onboarded_at"):
+            return redirect("/welcome/2")
+        todo = onboarding_mod.missing(db, uid(request))
+        has_resume = resume_store.canonical(db, user_id=uid(request)) is not None
+        return redirect("/welcome/1" if (not has_resume and 2 in todo) else f"/welcome/{todo[0] if todo else 5}")
+
+    @app.get("/welcome/{step}", response_class=HTMLResponse)
+    def welcome_step(request: Request, step: int):
+        if step not in WELCOME_TITLES:
+            return not_found(request)
+        db = get_db(request)
+        todo = onboarding_mod.missing(db, uid(request))
+        # roles need industries first; later steps can be visited in any order
+        if step == 3 and 2 in todo:
+            return redirect("/welcome/2", "error", "Choose your industries first.")
+        return render(request, "welcome.html", _welcome_ctx(request, step))
+
+    def _next_step(db: Database, me: int, after: int) -> str:
+        todo = [n for n in onboarding_mod.missing(db, me) if n > after] or onboarding_mod.missing(db, me)
+        return f"/welcome/{todo[0]}" if todo else "/welcome/5"
+
+    @app.post("/welcome/1")
+    async def welcome_resume(request: Request):
+        data = await request.form()
+        if not security.csrf_ok(request.state.session, data.get("csrf")):
+            raise PermissionError("csrf")
+        up = data.get("resume")
+        if up is None or not getattr(up, "filename", ""):
+            return redirect("/welcome/2")
+        content = await up.read(resume_store.MAX_UPLOAD_BYTES + 1)
+        db = get_db(request)
+        try:
+            resume_store.import_bytes(db, content, up.filename, actor=actor(request), user_id=uid(request))
+        except ResumeError as e:
+            return render(request, "welcome.html", _welcome_ctx(request, 1, e.message), 400)
+        return redirect("/welcome/2", "ok", "Resume uploaded. We used it to suggest industries and roles.")
+
+    @app.post("/welcome/{step}")
+    async def welcome_save(request: Request, step: int):
+        data = await form(request)
+        db = get_db(request)
+        me = uid(request)
+        who = actor(request)
+        try:
+            if step == 2:
+                onboarding_mod.save_industries(db, me, who, data.getlist("industry"))
+            elif step == 3:
+                onboarding_mod.save_roles(db, me, who, data.getlist("role"), data.getlist("custom_role"))
+            elif step == 4:
+                onboarding_mod.save_experience(db, me, who, data.get("experience", ""),
+                                               data.getlist("employment_type"))
+            elif step == 5:
+                onboarding_mod.save_location(
+                    db, me, who, countries=data.getlist("country"), arrangements=data.getlist("arrangement"),
+                    sponsorship=data.get("sponsorship", ""), authorised=data.getlist("authorised"),
+                    relocate=data.get("relocate") == "1", current_location=data.get("current_location", ""),
+                    min_salary=data.get("min_salary", ""), currency=data.get("currency", ""))
+            else:
+                return not_found(request)
+        except onboarding_mod.OnboardingError as e:
+            return render(request, "welcome.html", _welcome_ctx(request, step, str(e)), 400)
+        if step < 5:
+            return redirect(_next_step(db, me, step))
+        sess = request.state.session
+        try:
+            onboarding_mod.finish(db, me, who, account={"full_name": sess.get("full_name"), "email": sess.get("email")})
+        except onboarding_mod.OnboardingError as e:
+            todo = onboarding_mod.missing(db, me)
+            return redirect(f"/welcome/{todo[0]}" if todo else "/welcome/5", "error", str(e))
+        n = _personal_search(db, me)
+        msg = (f"All set. We found {n} job{'s' if n != 1 else ''} matching your preferences." if n else
+               "All set. We're searching for your roles; new jobs appear here after the next agent run "
+               "(usually within a day).")
+        return redirect("/jobs", "ok", msg)
+
+    def _personal_search(db: Database, me: int) -> int:
+        """Fetch jobs for this user's roles right away (a short, time-boxed run), then score them."""
+        http = app.state.http_factory()
+        try:
+            agent_mod.run_agent(db, cfg, trigger="onboarding", http=http, time_budget_s=45, prepare=False,
+                                user_ids=[me], triggered_by=me, personal_for=me)
+        except Exception as e:  # the user's preferences are saved either way
+            _log.warning("personal search failed: %s", e)
+        finally:
+            http.close()
+        s = settings_mod.get_all(db, me)
+        sql, params = agent_mod.user_job_scope(s.get("career"))
+        return int(db.scalar("SELECT COUNT(DISTINCT j.id) FROM jobs j JOIN job_scores sc ON sc.job_id=j.id "
+                             "AND sc.user_id=? "
+                             "WHERE j.status='open' AND j.is_sample=0 AND sc.recommendation <> 'skip'" + sql,
+                             (me, *params)) or 0)
+
+    # ------------------------------------------------------------------ help & support (users)
+    def _notify_admin_ticket(db: Database, t: dict, message: str, kind: str, request: Request) -> None:
+        to = cfg.admin_email or db.scalar("SELECT email FROM users WHERE role='admin' AND email IS NOT NULL "
+                                          "ORDER BY id LIMIT 1")
+        if not to:
+            return
+        bu = base_url(request)
+        link = f"{bu}/admin/support/{t['id']}" if bu else "the Support desk in JobAgent"
+        app.state.mailer.send(db, Message(
+            to=to, subject=f"[JobAgent support] {t['subject']}", kind=kind, related_user_id=t["user_id"],
+            text=(f"{'New request' if kind == 'support_new' else 'New reply'} from {t.get('username') or 'a user'} "
+                  f"({helpdesk.CATEGORIES.get(t['category'], t['category'])}):\n\n{message[:1500]}\n\n"
+                  f"Answer it here: {link}\n")))
+
+    def _notify_user_reply(db: Database, t: dict, body: str, request: Request) -> None:
+        if not t.get("email"):
+            return
+        bu = base_url(request)
+        app.state.mailer.send(db, Message(
+            to=t["email"], subject=f"Re: {t['subject']} (JobAgent support)", kind="support_reply",
+            related_user_id=t["user_id"],
+            text=(f"Hello {t.get('full_name') or t.get('username')},\n\nThe administrator replied to your request:\n\n"
+                  f"{body[:3000]}\n\n" + (f"View or reply: {bu}/support/{t['id']}\n" if bu else ""))))
+
+    @app.get("/support", response_class=HTMLResponse)
+    def support_page(request: Request, q: str = "", category: str = ""):
+        db = get_db(request)
+        me = uid(request)
+        category = category if category in helpdesk.CATEGORIES else ""
+        return render(request, "support.html", {
+            "tickets": helpdesk.list_for_user(db, me), "categories": helpdesk.CATEGORIES,
+            "statuses": helpdesk.STATUSES, "checks": helpdesk.diagnose(db, me), "q": q[:300], "category": category,
+            "suggestions": helpdesk.suggest(db, q, category) if (q.strip() or category) else [],
+            "popular": [a for a in helpdesk.KB if a["category"] in ("auto_apply", "companion")][:4],
+            "ai": ai_access(db, me)})
+
+    @app.get("/support/suggest")
+    def support_suggest(request: Request, q: str = "", category: str = ""):
+        db = get_db(request)
+        return {"suggestions": helpdesk.suggest(db, q[:500], category if category in helpdesk.CATEGORIES else "")}
+
+    @app.post("/support")
+    async def support_create(request: Request):
+        data = await form(request)
+        db = get_db(request)
+        me = uid(request)
+        try:
+            tid = helpdesk.create_ticket(db, user_id=me, category=data.get("category", ""),
+                                         subject=data.get("subject", ""), body=data.get("body", ""),
+                                         actor=actor(request))
+        except helpdesk.SupportError as e:
+            return redirect("/support#new", "error", str(e))
+        t = helpdesk.get_ticket(db, tid, user_id=me)
+        _notify_admin_ticket(db, t, data.get("body", ""), "support_new", request)
+        return redirect(f"/support/{tid}", "ok", "Request sent. You'll see the reply here (and by email).")
+
+    @app.post("/support/helpful")
+    async def support_helpful(request: Request):
+        data = await form(request)
+        helpdesk.mark_helpful(get_db(request), data.get("answer_id", ""))
+        return redirect("/support", "ok", "Glad that solved it. Thanks for the feedback.")
+
+    @app.get("/support/{tid}", response_class=HTMLResponse)
+    def support_ticket(request: Request, tid: int):
+        db = get_db(request)
+        me = uid(request)
+        t = helpdesk.get_ticket(db, tid, user_id=me)
+        if not t:
+            return not_found(request, "Request not found.")
+        helpdesk.mark_seen(db, tid, me)
+        text = t["subject"] + " " + (t["messages"][0]["body"] if t["messages"] else "")
+        return render(request, "support_ticket.html", {
+            "t": t, "categories": helpdesk.CATEGORIES, "statuses": helpdesk.STATUSES, "staff": False,
+            "suggestions": helpdesk.suggest(db, text, t["category"], limit=3) if t["status"] == "open" else []})
+
+    @app.post("/support/{tid}/reply")
+    async def support_reply(request: Request, tid: int):
+        data = await form(request)
+        db = get_db(request)
+        me = uid(request)
+        if not helpdesk.get_ticket(db, tid, user_id=me):
+            return not_found(request, "Request not found.")
+        try:
+            helpdesk.reply(db, tid, author_id=me, staff=False, body=data.get("body", ""), actor=actor(request))
+        except helpdesk.SupportError as e:
+            return redirect(f"/support/{tid}", "error", str(e))
+        t = helpdesk.get_ticket(db, tid, user_id=me)
+        _notify_admin_ticket(db, t, data.get("body", ""), "support_user_reply", request)
+        return redirect(f"/support/{tid}", "ok", "Reply sent.")
+
+    @app.post("/support/{tid}/status")
+    async def support_status(request: Request, tid: int):
+        data = await form(request)
+        db = get_db(request)
+        if not helpdesk.get_ticket(db, tid, user_id=uid(request)):
+            return not_found(request, "Request not found.")
+        try:
+            helpdesk.set_status(db, tid, data.get("status", ""), actor=actor(request), user_id=uid(request))
+        except helpdesk.SupportError as e:
+            return redirect(f"/support/{tid}", "error", str(e))
+        return redirect(f"/support/{tid}", "ok", "Marked resolved." if data.get("status") == "resolved"
+                        else "Request re-opened.")
+
+    # ------------------------------------------------------------------ application companion (browser extension)
+    def _companion_ctx(db: Database, me: int, request: Request, new_token: str | None = None) -> dict:
+        return {"tokens": companion.list_tokens(db, me), "new_token": new_token,
+                "server": base_url(request) or str(request.base_url).rstrip("/"),
+                "profile": companion.profile(db, me), "ai": ai_access(db, me), "token_days": companion.TOKEN_DAYS}
+
+    @app.get("/companion", response_class=HTMLResponse)
+    def companion_page(request: Request):
+        db = get_db(request)
+        return render(request, "companion.html", _companion_ctx(db, uid(request), request))
+
+    @app.post("/companion/tokens", response_class=HTMLResponse)
+    async def companion_token_create(request: Request):
+        data = await form(request)
+        db = get_db(request)
+        me = uid(request)
+        try:
+            token, _row = companion.create_token(db, user_id=me, name=data.get("name", ""), actor=actor(request))
+        except companion.CompanionError as e:
+            return redirect("/companion", "error", e.message)
+        # shown ONCE, in this response only (never stored in plain text, never put in a URL or cookie)
+        return render(request, "companion.html", _companion_ctx(db, me, request, token))
+
+    @app.post("/companion/tokens/{token_id}/revoke")
+    async def companion_token_revoke(request: Request, token_id: int):
+        await form(request)
+        try:
+            companion.revoke_token(get_db(request), token_id, user_id=uid(request), actor=actor(request))
+        except companion.CompanionError as e:
+            return redirect("/companion", "error", e.message)
+        return redirect("/companion", "ok", "Token revoked. The extension using it is disconnected.")
+
+    @app.get("/companion/extension.zip")
+    def companion_download(request: Request):
+        data = companion.extension_zip(base_url(request) or str(request.base_url).rstrip("/"))
+        return Response(data, media_type="application/zip",
+                        headers={"Content-Disposition": 'attachment; filename="jobagent-companion.zip"'})
+
+    # JSON API for the extension: Bearer-token auth (no cookies, so no CSRF), scoped to the token's user.
+    MAX_API_BODY = 512 * 1024
+
+    async def _api_json(request: Request) -> dict:
+        raw = await request.body()
+        if len(raw) > MAX_API_BODY:
+            raise companion.CompanionError("Request too large.", 413)
+        try:
+            data = json.loads(raw or b"{}")
+        except ValueError:
+            raise companion.CompanionError("Invalid JSON.", 400) from None
+        if not isinstance(data, dict):
+            raise companion.CompanionError("Invalid JSON.", 400)
+        return data
+
+    def _api_app_id(v) -> int | None:
+        if v in (None, "", 0):
+            return None
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            raise companion.CompanionError("app_id must be a number.", 400) from None
+        if n <= 0 or n > 2**53:
+            raise companion.CompanionError("app_id must be a number.", 400)
+        return n
+
+    def companion_api(fn):
+        @functools.wraps(fn)
+        async def wrapper(request: Request):
+            u = companion.authenticate(get_db(request), request.headers.get("authorization"))
+            if not u:
+                return JSONResponse({"error": "Access token invalid or expired. Create a new one on the "
+                                              "Application Companion page."}, status_code=401)
+            try:
+                res = fn(request, u)
+                if inspect.isawaitable(res):
+                    res = await res
+                return res
+            except companion.CompanionError as e:
+                return JSONResponse({"error": e.message}, status_code=e.status)
+        wrapper.__signature__ = inspect.Signature(
+            [inspect.Parameter("request", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=Request)])
+        return wrapper
+
+    @app.get("/api/companion/me")
+    @companion_api
+    def api_c_me(request: Request, u: dict):
+        db = get_db(request)
+        acc = ai_access(db, u["id"])
+        return {"user": {"username": u["username"], "full_name": u["full_name"]},
+                "ai": {"allowed": acc["allowed"] and make_provider(cfg).name != "none", "limit": acc["limit"],
+                       "spent": round(acc["spent"], 4)},
+                "profile": companion.profile(db, u["id"])}
+
+    @app.get("/api/companion/applications")
+    @companion_api
+    def api_c_apps(request: Request, u: dict):
+        db = get_db(request)
+        url = request.query_params.get("url", "")[:2000]
+        m = companion.match_application(db, u["id"], url) if url else None
+
+        def slim(a):
+            return {"id": a["id"], "title": a["title"], "company": a["company"], "status": a["status"]}
+        return {"match": slim(m) if m else None,
+                "applications": [slim(a) for a in companion.active_applications(db, u["id"])]}
+
+    @app.post("/api/companion/plan")
+    @companion_api
+    async def api_c_plan(request: Request, u: dict):
+        data = await _api_json(request)
+        db = get_db(request)
+        app_id = _api_app_id(data.get("app_id"))
+        if app_id is None and data.get("url"):
+            m = companion.match_application(db, u["id"], str(data["url"])[:2000])
+            app_id = m["id"] if m else None
+        res = companion.plan(db, user_id=u["id"], fields=data.get("fields") or [], app_id=app_id)
+        host = re.sub(r"^[a-z]+://([^/?#]+).*$", r"\1", str(data.get("url") or ""), flags=re.I)[:120]
+        audit(db, actor=f"user:{u['username']}", entity="companion", entity_id=app_id or "", action="companion_fill",
+              detail={"user_id": u["id"], "host": host, **res["summary"]})
+        return res
+
+    @app.get("/api/companion/resume")
+    @companion_api
+    def api_c_resume(request: Request, u: dict):
+        data, name = companion.resume_file(get_db(request), user_id=u["id"],
+                                           app_id=_api_app_id(request.query_params.get("app_id")))
+        return Response(data, media_type="application/pdf",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @app.post("/api/companion/learn")
+    @companion_api
+    async def api_c_learn(request: Request, u: dict):
+        data = await _api_json(request)
+        return companion.learn(get_db(request), user_id=u["id"], items=data.get("items"),
+                               actor=f"user:{u['username']}")
+
+    @app.post("/api/companion/draft")
+    @companion_api
+    async def api_c_draft(request: Request, u: dict):
+        data = await _api_json(request)
+        db = get_db(request)
+        s = settings_mod.get_all(db, u["id"])
+        ai = AIService(db, make_provider(cfg), s["ai"], user_id=u["id"])
+        return {"answer": companion.draft_answer(db, ai, user_id=u["id"], question=str(data.get("question") or ""),
+                                                 app_id=_api_app_id(data.get("app_id")))}
+
+    @app.post("/api/companion/applied")
+    @companion_api
+    async def api_c_applied(request: Request, u: dict):
+        data = await _api_json(request)
+        app_id = _api_app_id(data.get("app_id"))
+        if app_id is None:
+            raise companion.CompanionError("Pick the JobAgent application this page belongs to.", 400)
+        return companion.mark_applied(get_db(request), user_id=u["id"], app_id=app_id,
+                                      page_url=str(data.get("url") or ""),
+                                      confirmation_text=str(data.get("confirmation_text") or ""),
+                                      actor=f"user:{u['username']}")
+
+    # ------------------------------------------------------------------ administration: AI access + support desk
+    @app.post("/admin/users/{user_id}/ai-access")
+    async def admin_ai_access(request: Request, user_id: int):
+        data = await form(request)
+        db = get_db(request)
+        if not users_mod.get_user(db, user_id):
+            return not_found(request, "User not found.")
+        grant = data.get("grant") == "1"
+        raw = (data.get("monthly_limit_usd") or "").strip()
+        back = safe_next(data.get("next") or "/admin/users#all-users")
+        try:
+            limit = float(raw) if raw else None
+            if limit is not None and limit != limit:      # NaN
+                raise ValueError
+        except ValueError:
+            return redirect(back, "error", "The monthly AI allowance must be a number (USD).")
+        try:
+            u = users_mod.set_ai_access(db, user_id, grant, actor(request), actor_id=uid(request),
+                                        monthly_limit_usd=limit)
+        except users_mod.AccountError as e:
+            return redirect(back, "error", str(e))
+        users_mod.send_ai_access_notice(db, app.state.mailer, base_url=base_url(request), user=u, granted=grant)
+        if grant:
+            extra = (f" (allowance ${u['ai_monthly_limit_usd']:.2f}/month)." if u["ai_monthly_limit_usd"] is not None
+                     else ".")
+            return redirect(back, "ok", f"AI access granted to '{u['username']}'{extra}")
+        return redirect(back, "ok", f"AI access removed from '{u['username']}'.")
+
+    @app.get("/admin/support", response_class=HTMLResponse)
+    def admin_support(request: Request, status: str = "active", category: str = "", q: str = ""):
+        db = get_db(request)
+        return render(request, "admin_support.html", {
+            "tickets": helpdesk.list_all(db, status, category, q), "counts": helpdesk.counts(db),
+            "status": status, "category": category, "q": q[:80], "categories": helpdesk.CATEGORIES,
+            "statuses": helpdesk.STATUSES, "answers": helpdesk.flagged_answers(db)})
+
+    @app.get("/admin/support/{tid}", response_class=HTMLResponse)
+    def admin_support_ticket(request: Request, tid: int):
+        db = get_db(request)
+        t = helpdesk.get_ticket(db, tid, user_id=None)
+        if not t:
+            return not_found(request, "Request not found.")
+        text = t["subject"] + " " + " ".join(m["body"] for m in t["messages"] if not m["is_staff"])
+        return render(request, "support_ticket.html", {
+            "t": t, "categories": helpdesk.CATEGORIES, "statuses": helpdesk.STATUSES, "staff": True,
+            "suggestions": helpdesk.suggest(db, text, t["category"], limit=5),
+            "requester_ai": ai_access(db, t["user_id"]), "checks": helpdesk.diagnose(db, t["user_id"])})
+
+    @app.post("/admin/support/{tid}/reply")
+    async def admin_support_reply(request: Request, tid: int):
+        data = await form(request)
+        db = get_db(request)
+        t = helpdesk.get_ticket(db, tid, user_id=None)
+        if not t:
+            return not_found(request, "Request not found.")
+        body = data.get("body", "")
+        try:
+            helpdesk.reply(db, tid, author_id=uid(request), staff=True, body=body, actor=actor(request),
+                           resolve=data.get("resolve") == "1")
+            msg = "Reply sent."
+            if data.get("save_answer") == "1":
+                helpdesk.save_answer(db, actor=actor(request), admin_id=uid(request), category=t["category"],
+                                     question=(data.get("answer_question") or t["subject"]), answer=body,
+                                     keywords=data.get("answer_keywords", ""), source_ticket_id=tid)
+                msg += " Saved as a suggested answer: users asking something similar will see it first."
+        except helpdesk.SupportError as e:
+            return redirect(f"/admin/support/{tid}", "error", str(e))
+        _notify_user_reply(db, t, body, request)
+        return redirect(f"/admin/support/{tid}", "ok", msg)
+
+    @app.post("/admin/support/{tid}/status")
+    async def admin_support_status(request: Request, tid: int):
+        data = await form(request)
+        db = get_db(request)
+        if not helpdesk.get_ticket(db, tid, user_id=None):
+            return not_found(request, "Request not found.")
+        try:
+            helpdesk.set_status(db, tid, data.get("status", ""), actor=actor(request), user_id=None)
+        except helpdesk.SupportError as e:
+            return redirect(f"/admin/support/{tid}", "error", str(e))
+        return redirect(f"/admin/support/{tid}", "ok", "Status updated.")
+
+    @app.post("/admin/support/answers")
+    async def admin_answer_save(request: Request):
+        data = await form(request)
+        db = get_db(request)
+        aid = data.get("answer_id") or ""
+        try:
+            helpdesk.save_answer(db, actor=actor(request), admin_id=uid(request), category=data.get("category", ""),
+                                 question=data.get("question", ""), answer=data.get("answer", ""),
+                                 keywords=data.get("keywords", ""), answer_id=int(aid) if aid.isdigit() else None)
+        except helpdesk.SupportError as e:
+            return redirect("/admin/support#answers", "error", str(e))
+        return redirect("/admin/support#answers", "ok", "Suggested answer saved.")
+
+    @app.post("/admin/support/answers/{aid}/delete")
+    async def admin_answer_delete(request: Request, aid: int):
+        await form(request)
+        helpdesk.delete_answer(get_db(request), aid, actor=actor(request))
+        return redirect("/admin/support#answers", "ok", "Suggested answer deleted.")
+
     # ------------------------------------------------------------------ administration (admin only; see guard)
     @app.get("/admin/users", response_class=HTMLResponse)
-    def admin_users(request: Request):
+    def admin_users(request: Request, segment: str = ""):
         db = get_db(request)
         rows = users_mod.list_users(db)
+        aud = audience.overview(db, adzuna_configured=bool(cfg.adzuna_app_id and cfg.adzuna_app_key))
+        for u in rows:
+            u["profile"] = aud["profiles"].get(u["id"])
+        segment = segment if segment in taxonomy.BY_ID or segment == "unset" else ""
+        shown = [u for u in rows if not segment or (
+            (segment == "unset" and u["profile"] and not u["profile"]["self_reported"]) or
+            (u["profile"] and segment in u["profile"]["industries"]))]
         outbox = db.all("SELECT id, kind, to_addr, subject, status, provider, error, created_at, sent_at FROM outbox "
                         "ORDER BY id DESC LIMIT 50")
         return render(request, "admin_users.html", {
-            "pending": [u for u in rows if u["status"] == "pending"], "users": rows, "outbox": outbox,
+            "pending": [u for u in rows if u["status"] == "pending"], "users": shown, "all_count": len(rows),
+            "outbox": outbox, "aud": aud, "segment": segment,
+            "segment_label": taxonomy.industry_label(segment) if segment in taxonomy.BY_ID else
+            ("Preferences not set" if segment == "unset" else ""),
+            "chart_industries": charts.hbar(aud["industries_by_users"], "Users by target industry"),
+            "chart_levels": charts.hbar(aud["levels"], "Users by experience level"),
+            "role_label": taxonomy.role_label, "industry_label": taxonomy.industry_label,
+            "adzuna": bool(cfg.adzuna_app_id and cfg.adzuna_app_key),
             "mail_provider": app.state.mailer.provider.name, "admin_email": cfg.admin_email,
             "public_url": base_url(request)})
 
@@ -1413,8 +1987,9 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
 
     @app.get("/api/jobs")
     def api_jobs(request: Request):
-        rows, total = queries.search_jobs(get_db(request), queries.JobFilters.from_query(request.query_params),
-                                          user_id=uid(request))
+        db = get_db(request)
+        rows, total = queries.search_jobs(db, queries.JobFilters.from_query(request.query_params),
+                                          user_id=uid(request), career=settings_mod.get(db, "career", uid(request)))
         return {"total": total, "jobs": rows}
 
     @app.get("/favicon.ico")

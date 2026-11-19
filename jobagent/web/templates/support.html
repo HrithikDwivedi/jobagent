@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Help & Support{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Help & Support</h1>
+    <p>Most questions are answered instantly below: answers the team has already given, help articles, and a live check of your own account. If you still need help, raise a request and the administrator replies here.</p>
+  </div>
+  <a class="btn" href="#new">{{ m.ico('send') }} Raise a request</a>
+</div>
+
+{% set warn = checks|selectattr('level', 'equalto', 'warn')|list %}
+<section class="card section" aria-labelledby="h-checks">
+  <div class="card-title">
+    <h2 id="h-checks">Your account check</h2>
+    {% if warn %}<span class="badge b-amber">{{ warn|length }} to fix</span>{% else %}<span class="badge b-green">{{ m.ico('check') }} Looks good</span>{% endif %}
+  </div>
+  {% if checks %}
+    <ul class="check-list">
+      {% for c in checks %}
+        <li class="check-item {{ c.level }}">
+          <svg class="ico" aria-hidden="true"><use href="/static/icons.svg#{{ 'alert' if c.level == 'warn' else 'info' }}"></use></svg>
+          <div class="grow"><strong>{{ c.title }}</strong><div class="small muted">{{ c.detail }}</div></div>
+          <a class="btn btn-sm" href="{{ c.href }}">Fix</a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted mb0">Resume, candidate details, screening answers, auto-apply and the Companion are all set up.</p>
+  {% endif %}
+</section>
+
+<section class="card section" aria-labelledby="h-find">
+  <h2 id="h-find">Find an answer</h2>
+  <form method="get" action="/support" class="row search-row" role="search">
+    <div class="field grow mb0">
+      <label for="q" class="visually-hidden">Describe your question</label>
+      <input type="search" id="q" name="q" value="{{ q }}" maxlength="300" placeholder="e.g. auto-apply keeps asking me to fill the form">
+    </div>
+    <div class="field mb0">
+      <label for="qc" class="visually-hidden">Topic</label>
+      <select id="qc" name="category">
+        <option value="">All topics</option>
+        {% for k, v in categories.items() %}<option value="{{ k }}"{% if k == category %} selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">{{ m.ico('search') }} Search</button>
+  </form>
+  {% set shown = suggestions if (q or category) else popular %}
+  {% if (q or category) and not suggestions %}
+    <p class="muted mt mb0">No saved answer matches that yet. <a href="#new">Raise a request</a> and the administrator will reply.</p>
+  {% else %}
+    {% if not (q or category) %}<p class="small muted mt">Most asked:</p>{% endif %}
+    <div class="faq-list mt">
+      {% for s in shown %}
+        <details class="faq"{% if loop.first and (q or category) %} open{% endif %}>
+          <summary>{{ s.question }} {% if s.source == 'team' %}<span class="badge b-green">Answered by the team</span>{% endif %}</summary>
+          <div class="faq-body">
+            <p>{{ s.answer }}</p>
+            <form method="post" action="/support/helpful" class="inline">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input type="hidden" name="answer_id" value="{{ s.id }}">
+              <button type="submit" class="btn btn-sm">{{ m.ico('check') }} This solved it</button>
+            </form>
+          </div>
+        </details>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+
+<div class="grid grid-2">
+  <section class="card" id="new" aria-labelledby="h-new">
+    <h2 id="h-new">Raise a request</h2>
+    <form method="post" action="/support" class="stack-sm" data-suggest-form>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="field">
+        <label for="t-cat">Topic</label>
+        <select id="t-cat" name="category" required>
+          {% for k, v in categories.items() %}<option value="{{ k }}"{% if k == (category or 'auto_apply') %} selected{% endif %}>{{ v }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="t-sub">Subject</label>
+        <input type="text" id="t-sub" name="subject" required minlength="4" maxlength="150" value="{{ q }}" placeholder="One line summary">
+      </div>
+      <div class="field">
+        <label for="t-body">What happened? <span class="hint">(the job or page, what you expected, what you saw)</span></label>
+        <textarea id="t-body" name="body" rows="5" required minlength="10" maxlength="5000"></textarea>
+      </div>
+      <div class="suggest-box" data-suggest-box hidden aria-live="polite">
+        <p class="small"><strong>These answers might already solve it:</strong></p>
+        <ul class="suggest-list"></ul>
+      </div>
+      <button type="submit" class="btn btn-primary" data-loading-text="Sending…">{{ m.ico('send') }} Send request</button>
+    </form>
+  </section>
+
+  <section class="card" aria-labelledby="h-ai">
+    <h2 id="h-ai">AI features</h2>
+    {% if ai.allowed %}
+      <p><span class="badge b-green">{{ m.ico('sparkle') }} Enabled</span></p>
+      <p class="muted">AI analyses job requirements, polishes resume wording (fact-guarded), drafts cover letters and drafts answers in the Application Companion.</p>
+      {% if ai.limit is not none %}<p class="small">Monthly allowance: <strong>${{ '%.2f'|format(ai.spent) }}</strong> of <strong>${{ '%.2f'|format(ai.limit) }}</strong> used.</p>{% endif %}
+    {% else %}
+      <p><span class="badge b-grey">Not enabled</span></p>
+      <p class="muted">Your account uses the rule-based tools, which cover every feature. AI access is granted by the administrator.</p>
+      <form method="post" action="/support" class="stack-sm">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="category" value="ai_access">
+        <input type="hidden" name="subject" value="Request: AI access">
+        <div class="field">
+          <label for="ai-why">Why do you need it? <span class="hint">(optional)</span></label>
+          <textarea id="ai-why" name="body" rows="3" maxlength="2000" minlength="10">Please enable AI features for my account.</textarea>
+        </div>
+        <button type="submit" class="btn">{{ m.ico('sparkle') }} Request AI access</button>
+      </form>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card section mt" aria-labelledby="h-mine">
+  <h2 id="h-mine">Your requests</h2>
+  {% if tickets %}
+    <div class="table-wrap"><table>
+      <caption class="visually-hidden">Your support requests</caption>
+      <thead><tr><th scope="col">Subject</th><th scope="col">Topic</th><th scope="col">Status</th><th scope="col">Updated</th><th scope="col" class="num">Messages</th></tr></thead>
+      <tbody>
+      {% for t in tickets %}
+        <tr>
+          <td><a href="/support/{{ t.id }}">{{ t.subject }}</a>{% if t.unread %} <span class="badge b-blue">New reply</span>{% endif %}</td>
+          <td>{{ categories.get(t.category, t.category) }}</td>
+          <td><span class="badge {{ {'open': 'b-amber', 'answered': 'b-blue', 'resolved': 'b-green', 'closed': 'b-grey'}[t.status] }}">{{ statuses[t.status] }}</span></td>
+          <td class="nowrap">{{ m.dt(t.updated_at) }}</td>
+          <td class="num">{{ t.n_messages }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <div class="empty"><strong>No requests yet</strong>Anything you raise appears here with the administrator's replies.</div>
+  {% endif %}
+</section>
+{% endblock %}

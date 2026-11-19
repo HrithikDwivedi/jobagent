@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ t.subject }}{% endblock %}
+{% block content %}
+{% set back = '/admin/support' if staff else '/support' %}
+{% set base = '/admin/support/' ~ t.id if staff else '/support/' ~ t.id %}
+<div class="page-head">
+  <div>
+    <p class="small mb0"><a href="{{ back }}">{{ m.ico('arrow-left') }} {{ 'Support desk' if staff else 'Help & Support' }}</a></p>
+    <h1>{{ t.subject }}</h1>
+    <p>
+      <span class="badge {{ {'open': 'b-amber', 'answered': 'b-blue', 'resolved': 'b-green', 'closed': 'b-grey'}[t.status] }}">{{ statuses[t.status] }}</span>
+      · {{ categories.get(t.category, t.category) }} · opened {{ m.dt(t.created_at) }}
+      {% if staff %} · by <strong>{{ t.full_name or t.username }}</strong> (@{{ t.username }}{% if t.email %}, {{ t.email }}{% endif %}){% endif %}
+    </p>
+  </div>
+  <form method="post" action="{{ base }}/status" class="row">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if staff %}
+      <label for="st" class="visually-hidden">Status</label>
+      <select id="st" name="status">{% for k, v in statuses.items() %}<option value="{{ k }}"{% if k == t.status %} selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+      <button type="submit" class="btn btn-sm">Set status</button>
+    {% elif t.status in ('open', 'answered') %}
+      <input type="hidden" name="status" value="resolved">
+      <button type="submit" class="btn btn-sm">{{ m.ico('check') }} Mark resolved</button>
+    {% elif t.status == 'resolved' %}
+      <input type="hidden" name="status" value="open">
+      <button type="submit" class="btn btn-sm">Re-open</button>
+    {% endif %}
+  </form>
+</div>
+
+<div class="split-support">
+  <section class="card" aria-labelledby="h-thread">
+    <h2 id="h-thread" class="visually-hidden">Conversation</h2>
+    <ol class="thread">
+      {% for msg in t.messages %}
+        <li class="msg{{ ' staff' if msg.is_staff }}">
+          <div class="msg-head"><strong>{{ 'Administrator' if msg.is_staff else (msg.full_name or msg.username or 'User') }}</strong> <span class="small muted">{{ m.dt(msg.created_at) }}</span></div>
+          <div class="msg-body">{{ msg.body }}</div>
+        </li>
+      {% endfor %}
+    </ol>
+    {% if t.status != 'closed' or staff %}
+    <form method="post" action="{{ base }}/reply" class="stack-sm mt">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="field">
+        <label for="reply">{{ 'Reply to the user' if staff else 'Add a reply' }}</label>
+        <textarea id="reply" name="body" rows="5" required maxlength="5000" data-reply-box></textarea>
+      </div>
+      {% if staff %}
+        <label class="check"><input type="checkbox" name="resolve" value="1"> Mark as resolved with this reply</label>
+        <details class="disclosure">
+          <summary>Save this reply as a suggested answer</summary>
+          <div class="disclosure-body stack-sm">
+            <label class="check"><input type="checkbox" name="save_answer" value="1"> Show this answer to users who ask something similar</label>
+            <div class="field"><label for="aq">Question users will see</label><input type="text" id="aq" name="answer_question" maxlength="300" value="{{ t.subject }}"></div>
+            <div class="field"><label for="ak">Extra keywords <span class="hint">(optional, helps matching)</span></label><input type="text" id="ak" name="answer_keywords" maxlength="300"></div>
+          </div>
+        </details>
+      {% endif %}
+      <button type="submit" class="btn btn-primary" data-loading-text="Sending…">{{ m.ico('send') }} Send reply</button>
+    </form>
+    {% else %}
+      <p class="muted mt">This request is closed. <a href="/support#new">Raise a new one</a> if you need more help.</p>
+    {% endif %}
+  </section>
+
+  <aside class="stack">
+    {% if staff %}
+      <section class="card" aria-labelledby="h-req">
+        <h2 id="h-req">Requester</h2>
+        <dl class="facts">
+          <div><dt>AI access</dt><dd>{% if requester_ai.allowed %}<span class="badge b-green">Enabled</span>{% if requester_ai.limit is not none %} ${{ '%.2f'|format(requester_ai.spent) }} / ${{ '%.2f'|format(requester_ai.limit) }}{% endif %}{% else %}<span class="badge b-grey">Not enabled</span>{% endif %}</dd></div>
+        </dl>
+        {% if t.role != 'admin' %}
+        <form method="post" action="/admin/users/{{ t.user_id }}/ai-access" class="stack-sm">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="next" value="/admin/support/{{ t.id }}">
+          {% if requester_ai.allowed %}
+            <input type="hidden" name="grant" value="0">
+            <button type="submit" class="btn btn-sm btn-danger">Remove AI access</button>
+          {% else %}
+            <input type="hidden" name="grant" value="1">
+            <div class="field"><label for="lim">Monthly allowance (USD) <span class="hint">(blank = no personal cap)</span></label><input type="number" id="lim" name="monthly_limit_usd" min="0" max="1000" step="0.01" placeholder="e.g. 2.00"></div>
+            <button type="submit" class="btn btn-sm btn-primary">{{ m.ico('sparkle') }} Grant AI access</button>
+          {% endif %}
+        </form>
+        {% endif %}
+        {% if checks %}
+          <h3 class="mt">Their account check</h3>
+          <ul class="check-list compact">
+            {% for c in checks %}<li class="check-item {{ c.level }}"><div><strong>{{ c.title }}</strong><div class="small muted">{{ c.detail }}</div></div></li>{% endfor %}
+          </ul>
+        {% endif %}
+      </section>
+    {% endif %}
+    {% if suggestions %}
+      <section class="card" aria-labelledby="h-sugg">
+        <h2 id="h-sugg">{{ 'Suggested replies' if staff else 'Answers that may help' }}</h2>
+        <div class="faq-list">
+          {% for s in suggestions %}
+            <details class="faq">
+              <summary>{{ s.question }} {% if s.source == 'team' %}<span class="badge b-green">Team</span>{% endif %}</summary>
+              <div class="faq-body">
+                <p>{{ s.answer }}</p>
+                {% if staff %}<button type="button" class="btn btn-sm" data-use-answer="{{ s.answer }}">Use this reply</button>{% endif %}
+              </div>
+            </details>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

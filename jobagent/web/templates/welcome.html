@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ 'Your job preferences' if editing else 'Welcome' }}{% endblock %}
+{% block content %}
+<div class="wizard">
+  <div class="wizard-head">
+    <a class="brand wizard-brand" href="/welcome"><span class="brand-mark" aria-hidden="true"><svg class="ico"><use href="/static/icons.svg#logo"></use></svg></span> JobAgent</a>
+    {% if editing %}
+      <a class="btn btn-sm" href="/">{{ m.ico('arrow-left') }} Back to dashboard</a>
+    {% else %}
+      <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn-sm btn-ghost">Sign out</button></form>
+    {% endif %}
+  </div>
+
+  <div class="wizard-intro">
+    {% if not editing and step == 1 %}<p class="eyebrow">Welcome{{ ', ' ~ first_name if first_name }}</p>{% endif %}
+    <h1>{{ titles[step][0] }}</h1>
+    <p class="muted">{{ titles[step][1] }}</p>
+  </div>
+
+  <ol class="wizard-steps" aria-label="Setup progress">
+    {% for n, label, hint in steps %}
+      <li class="{{ 'done' if n < step or (n in answered and n != step) }}{{ ' current' if n == step }}">
+        {% if n in answered or n <= step or editing %}<a href="/welcome/{{ n }}"{% if n == step %} aria-current="step"{% endif %}>{% else %}<span>{% endif %}
+          <span class="ws-num">{% if n in answered and n != step %}<svg class="ico" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg>{% else %}{{ n }}{% endif %}</span>
+          <span class="ws-label">{{ label }}<small>{{ hint }}</small></span>
+        {% if n in answered or n <= step or editing %}</a>{% else %}</span>{% endif %}
+      </li>
+    {% endfor %}
+  </ol>
+
+  {% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+
+  <section class="card wizard-card">
+  {% if step == 1 %}
+    {% if resume %}
+      <div class="alert alert-ok" role="status"><strong>Resume uploaded:</strong> {{ resume.label or 'your resume' }}.{% if suggest.industries %} We pre-selected what it suggests on the next steps.{% endif %}</div>
+    {% endif %}
+    <form method="post" action="/welcome/1" enctype="multipart/form-data" class="stack" data-overlay="resume">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="dropzone" for="resume">
+        <svg class="ico" aria-hidden="true"><use href="/static/icons.svg#upload"></use></svg>
+        <strong>{{ 'Upload a newer resume' if resume else 'Upload your resume' }}</strong>
+        <span class="muted small">PDF or Word, up to 10 MB. We use it to rank jobs by fit and to fill application forms. It stays private to your account.</span>
+        <input type="file" id="resume" name="resume" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+      </label>
+      <div class="wizard-actions">
+        <a class="btn btn-ghost" href="/welcome/2">{{ 'Continue' if resume else 'Skip for now' }}</a>
+        <button type="submit" class="btn btn-primary" data-loading-text="Reading your resume…">{{ m.ico('upload') }} Upload and continue</button>
+      </div>
+    </form>
+
+  {% elif step == 2 %}
+    <form method="post" action="/welcome/2" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <fieldset class="picker" data-max-checked="3">
+        <legend class="row between"><span>Industries <span class="req">required</span></span><span class="small muted" data-pick-count>Choose up to 3</span></legend>
+        <div class="pick-grid">
+          {% for ind in industries %}
+            {% set on = ind.id in career.industries or (not career.industries and ind.id in suggest.industries) %}
+            <label class="pick{{ ' is-on' if on }}">
+              <input type="checkbox" name="industry" value="{{ ind.id }}"{% if on %} checked{% endif %}>
+              <span class="pick-ico" aria-hidden="true"><svg class="ico"><use href="/static/icons.svg#{{ ind.icon }}"></use></svg></span>
+              <span class="pick-text"><strong>{{ ind.label }}</strong><span>{{ ind.blurb }}</span>
+                {% if ind.id in suggest.industries %}<em class="badge b-blue">From your resume</em>{% endif %}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <div class="wizard-actions">
+        <a class="btn btn-ghost" href="/welcome/1">{{ m.ico('arrow-left') }} Back</a>
+        <button type="submit" class="btn btn-primary">Continue {{ m.ico('arrow-right') }}</button>
+      </div>
+    </form>
+
+  {% elif step == 3 %}
+    <form method="post" action="/welcome/3" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <fieldset class="picker" data-max-checked="3">
+        <legend class="row between"><span>Roles you want <span class="req">required</span></span><span class="small muted" data-pick-count>Choose up to 3</span></legend>
+        {% for ind in chosen_industries %}
+          <h3 class="pick-group">{{ ind.label }}</h3>
+          <div class="pick-grid compact">
+            {% for r in ind.roles %}
+              {% set on = r.id in career.roles or (not career.roles and not career.custom_roles and r.id in suggest.roles) %}
+              <label class="pick{{ ' is-on' if on }}">
+                <input type="checkbox" name="role" value="{{ r.id }}"{% if on %} checked{% endif %}>
+                <span class="pick-text"><strong>{{ r.label }}</strong>{% if r.id in suggest.roles %}<em class="badge b-blue">From your resume</em>{% endif %}</span>
+              </label>
+            {% endfor %}
+          </div>
+        {% endfor %}
+        <div class="field mt">
+          <label for="custom">Not listed? Type the role in your own words <span class="hint">(counts as one of your 3)</span></label>
+          <input type="text" id="custom" name="custom_role" maxlength="60" value="{{ career.custom_roles[0] if career.custom_roles else '' }}" placeholder="e.g. Ward Sister, Tax Associate, Barista" data-counts-toward>
+        </div>
+      </fieldset>
+      <div class="wizard-actions">
+        <a class="btn btn-ghost" href="/welcome/2">{{ m.ico('arrow-left') }} Back</a>
+        <button type="submit" class="btn btn-primary">Continue {{ m.ico('arrow-right') }}</button>
+      </div>
+    </form>
+
+  {% elif step == 4 %}
+    <form method="post" action="/welcome/4" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <fieldset class="picker">
+        <legend>Your experience level <span class="req">required</span></legend>
+        <div class="pick-grid compact">
+          {% for key, (label, hint) in experience.items() %}
+            <label class="pick{{ ' is-on' if career.experience == key }}">
+              <input type="radio" name="experience" value="{{ key }}" required{% if career.experience == key %} checked{% endif %}>
+              <span class="pick-text"><strong>{{ label }}</strong><span>{{ hint }}</span></span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <fieldset class="picker">
+        <legend>Type of job <span class="req">required</span></legend>
+        <div class="row wrap-gap">
+          {% for key, label in employment_types.items() %}
+            <label class="chip-check"><input type="checkbox" name="employment_type" value="{{ key }}"{% if key in (career.employment_types or ['full_time']) %} checked{% endif %}> {{ label }}</label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <div class="wizard-actions">
+        <a class="btn btn-ghost" href="/welcome/3">{{ m.ico('arrow-left') }} Back</a>
+        <button type="submit" class="btn btn-primary">Continue {{ m.ico('arrow-right') }}</button>
+      </div>
+    </form>
+
+  {% elif step == 5 %}
+    <form method="post" action="/welcome/5" class="stack" data-overlay="feed">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <fieldset class="picker" data-max-checked="{{ max_countries }}">
+        <legend class="row between"><span>Countries where you want to work <span class="req">required</span></span><span class="small muted" data-pick-count>Up to {{ max_countries }}</span></legend>
+        <div class="field mb0"><label for="cfilter" class="visually-hidden">Filter countries</label>
+          <input type="search" id="cfilter" placeholder="Type to filter countries" data-filter-list="#country-list" autocomplete="off"></div>
+        <div class="country-grid" id="country-list">
+          {% for code, name in countries_sorted %}
+            <label class="chip-check" data-filter-item="{{ name|lower }}"><input type="checkbox" name="country" value="{{ code }}"{% if code in chosen_countries %} checked{% endif %}> {{ name }}</label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <div class="grid grid-2">
+        <fieldset class="picker">
+          <legend>How do you want to work? <span class="req">required</span></legend>
+          {% for key, label in [('onsite', 'On-site'), ('hybrid', 'Hybrid'), ('remote', 'Remote')] %}
+            <label class="check"><input type="checkbox" name="arrangement" value="{{ key }}"{% if key in arrangements %} checked{% endif %}> {{ label }}</label>
+          {% endfor %}
+          <label class="check mt"><input type="checkbox" name="relocate" value="1"{% if relocate %} checked{% endif %}> I'm willing to relocate</label>
+        </fieldset>
+        <fieldset class="picker">
+          <legend>Do you need a visa or sponsorship to work in these countries? <span class="req">required</span></legend>
+          {% for key, label in sponsor_choices.items() %}
+            <label class="check"><input type="radio" name="sponsorship" value="{{ key }}" required{% if key == sponsorship %} checked{% endif %}> {{ label }}</label>
+          {% endfor %}
+          <div class="field mt" data-show-when-some>
+            <span class="small">Where can you already work?</span>
+            <div class="country-grid small-grid">
+              {% for code, name in countries_sorted %}
+                <label class="chip-check"><input type="checkbox" name="authorised" value="{{ code }}"{% if code in authorised %} checked{% endif %}> {{ name }}</label>
+              {% endfor %}
+            </div>
+          </div>
+        </fieldset>
+      </div>
+      <div class="grid grid-2">
+        <div class="field">
+          <label for="loc">Where do you live now? <span class="hint">(optional, city and country)</span></label>
+          <input type="text" id="loc" name="current_location" maxlength="120" value="{{ current_location or '' }}" placeholder="e.g. Manchester, United Kingdom">
+        </div>
+        <div class="field">
+          <label for="sal">Minimum yearly salary <span class="hint">(optional)</span></label>
+          <div class="row nowrap">
+            <input type="text" id="sal" name="min_salary" inputmode="numeric" maxlength="12" value="{{ min_salary or '' }}" placeholder="e.g. 30000">
+            <label for="cur" class="visually-hidden">Currency</label>
+            <select id="cur" name="currency">{% for c in currencies %}<option{% if c == currency %} selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+          </div>
+        </div>
+      </div>
+      <p class="small muted">Your choices decide which jobs we fetch and how they are ranked. The administrator can see your industries, roles and level (never your resume or applications) to add better job sources.</p>
+      <div class="wizard-actions">
+        <a class="btn btn-ghost" href="/welcome/4">{{ m.ico('arrow-left') }} Back</a>
+        <button type="submit" class="btn btn-primary" data-loading-text="Finding your jobs…">{{ m.ico('search') }} {{ 'Save preferences' if editing else 'Find my jobs' }}</button>
+      </div>
+    </form>
+  {% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -137,12 +137,36 @@ def estimate_cost(model: str, tokens_in: int, tokens_out: int) -> float:
     return (tokens_in * pin + tokens_out * pout) / 1_000_000
 
 
-ADMIN_ONLY_REASON = "AI features are available to the administrator only"
+NO_ACCESS_REASON = "AI access has not been granted to your account. Ask the administrator (Help & Support)."
+ADMIN_ONLY_REASON = NO_ACCESS_REASON     # backwards-compatible name
+
+
+def ai_access(db: Database, user_id: int | None) -> dict:
+    """{'allowed': bool, 'limit': float|None, 'spent': float} for one account. The administrator always has access;
+    every other APPROVED account only when the administrator granted it (new sign-ups start without it)."""
+    if user_id is None:
+        return {"allowed": False, "limit": None, "spent": 0.0}
+    u = db.one("SELECT role, status, ai_access, ai_monthly_limit_usd FROM users WHERE id=?", (user_id,))
+    if not u:
+        return {"allowed": False, "limit": None, "spent": 0.0}
+    allowed = u["role"] == "admin" or (bool(u["ai_access"]) and u["status"] == "approved")
+    limit = None if u["role"] == "admin" or u["ai_monthly_limit_usd"] is None else float(u["ai_monthly_limit_usd"])
+    return {"allowed": allowed, "limit": limit, "spent": user_month_spend(db, user_id)}
+
+
+def _month_start() -> str:
+    return iso(utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+
+
+def user_month_spend(db: Database, user_id: int) -> float:
+    return float(db.scalar("SELECT COALESCE(SUM(cost_usd),0) FROM ai_usage WHERE user_id=? AND at >= ?",
+                           (user_id, _month_start())) or 0)
 
 
 class AIService:
-    """AI access for ONE user. AI is an administrator-only feature: for any other user (or no user) the service is
-    disabled, whatever the settings or API keys say, so every caller falls back to the rule-based path."""
+    """AI access for ONE user. The administrator decides who may use AI (Admin -> Users). For anyone without access
+    (or no user) the service is disabled whatever the settings or API keys say, so every caller falls back to the
+    rule-based path. Access is re-checked before every call, so revoking takes effect immediately."""
 
     def __init__(self, db: Database, provider: Provider, ai_settings: dict, run_id: str | None = None, *,
                  user_id: int | None):
@@ -150,9 +174,8 @@ class AIService:
         self.user_id = user_id
         self.run_cost = 0.0
         self.disabled_reason: str | None = None
-        role = db.scalar("SELECT role FROM users WHERE id=?", (user_id,)) if user_id is not None else None
-        if role != "admin":
-            self.disabled_reason = ADMIN_ONLY_REASON
+        if not ai_access(db, user_id)["allowed"]:
+            self.disabled_reason = NO_ACCESS_REASON
         elif not ai_settings.get("enabled", True):
             self.disabled_reason = "AI disabled in Settings"
         elif provider.name == "none":
@@ -162,9 +185,10 @@ class AIService:
     def available(self) -> bool:
         return self.disabled_reason is None
 
-    def _still_admin(self) -> bool:
-        return self.user_id is not None and \
-            self.db.scalar("SELECT role FROM users WHERE id=?", (self.user_id,)) == "admin"
+    def _still_allowed(self) -> bool:
+        return ai_access(self.db, self.user_id)["allowed"]
+
+    _still_admin = _still_allowed      # backwards-compatible name
 
     def month_spend(self) -> float:
         start = utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -178,8 +202,8 @@ class AIService:
                          (error or "")[:300] or None, iso(), self.user_id))
 
     def json_call(self, purpose: str, system: str, user: str, max_tokens: int = 900) -> dict:
-        if self.disabled_reason != ADMIN_ONLY_REASON and not self._still_admin():
-            self.disabled_reason = ADMIN_ONLY_REASON
+        if self.disabled_reason != NO_ACCESS_REASON and not self._still_allowed():
+            self.disabled_reason = NO_ACCESS_REASON
         if not self.available:
             raise AIError(self.disabled_reason, permanent=True)
         model = self.conf["model"]
@@ -193,6 +217,10 @@ class AIService:
             raise BudgetExceeded(f"Run AI budget (${self.conf['run_budget_usd']}) would be exceeded.")
         if self.month_spend() + est > self.conf["monthly_budget_usd"]:
             raise BudgetExceeded(f"Monthly AI budget (${self.conf['monthly_budget_usd']}) would be exceeded.")
+        acc = ai_access(self.db, self.user_id)
+        if acc["limit"] is not None and acc["spent"] + est > acc["limit"]:
+            raise BudgetExceeded(f"Your monthly AI allowance (${acc['limit']:.2f}) would be exceeded. "
+                                 "Ask the administrator to raise it.")
         models = [model] + ([self.conf["fallback_model"]] if self.conf.get("fallback_model") else [])
         last: AIError | None = None
         for m in models:

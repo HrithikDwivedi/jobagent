@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>JobAgent Companion</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <header><span class="mark">J</span><div><strong>JobAgent Companion</strong><div class="muted" id="who">Connecting…</div></div></header>
+  <section id="setup" hidden>
+    <p>Connect the Companion to your JobAgent account first.</p>
+    <button id="open-options" class="primary">Open settings</button>
+  </section>
+  <section id="main" hidden>
+    <label for="app">This application</label>
+    <select id="app"><option value="">Not linked to a JobAgent job</option></select>
+    <p class="muted small" id="match-note"></p>
+    <button id="fill" class="primary">Fill this form</button>
+    <div class="row">
+      <button id="learn">Save my answers</button>
+      <button id="draft" hidden>AI draft open questions</button>
+    </div>
+    <button id="applied" class="ghost">I've submitted this application</button>
+    <div id="report" class="report" aria-live="polite"></div>
+    <div id="learn-box" hidden>
+      <p class="small">Tick the answers to keep in your Screening Answers library:</p>
+      <ul id="learn-list"></ul>
+      <button id="learn-save" class="primary">Save selected</button>
+    </div>
+    <p class="muted small foot">You always review and press Submit yourself. Green = filled, amber = needs you, blue = AI draft.</p>
+  </section>
+  <script src="popup.js"></script>
+</body>
+</html>
