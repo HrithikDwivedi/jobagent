@@ -1132,3 +1132,29 @@ code { overflow-wrap: anywhere; }
 .persona { display: block; color: var(--text-strong); font-weight: 600; font-size: .85rem; }
 .tag-row { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .25rem; }
 .segment-grid > .card, .segment-grid > .card + .card { margin: 0; }
+.salary-box { border: 1px solid var(--border); border-radius: var(--radius); padding: .8rem 1rem 1rem; margin: .4rem 0 1rem; min-width: 0; }
+.salary-box legend { font-weight: 650; padding: 0 .3rem; }
+.salary-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: .75rem; }
+@media (max-width: 560px) { .salary-row { grid-template-columns: minmax(0, 1fr); } }
+
+/* ------------------------------------------------------------------ application: apply panel */
+.btn-success { background: var(--green); border-color: var(--green); color: #fff; }
+.btn-success:hover { filter: brightness(1.06); color: #fff; }
+.apply-panel { border-top: 3px solid var(--primary); }
+.apply-head h2 { margin: 0 0 .3rem; }
+.apply-actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-start; margin-top: 1rem; }
+.apply-actions form.inline { display: flex; flex-direction: column; gap: .4rem; }
+.applied-extra { max-width: 30rem; }
+.autoapply-box > summary { cursor: pointer; padding: .2rem 0; }
+.autoapply-box[open] > summary { margin-bottom: .8rem; }
+.stepper-3 li { flex-basis: 200px; }
+
+/* ------------------------------------------------------------------ admin: screens */
+.bulk-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .8rem; }
+.screens-cell { min-width: 11rem; max-width: 16rem; }
+.screen-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: .1rem .6rem; }
+.matrix th, .matrix td { font-size: .8rem; }
+.matrix .center { text-align: center; }
+.matrix .yes { color: var(--green); font-weight: 700; }
+.matrix .no { color: var(--muted); }
+.matrix-box > summary { cursor: pointer; }

@@ -1,35 +1,14 @@
-// JobAgent Companion popup: talks to JobAgent through the service worker and drives fill.js in the active tab.
+// JobAgent Companion popup: talks to JobAgent through the service worker and drives fill.js in the active tab
+// (the same flows the on-page card uses, from flow.js).
 const $ = (id) => document.getElementById(id);
 const api = (path, method, body, binary) => chrome.runtime.sendMessage({ type: "api", path, method, body, binary });
-let tab = null, me = null, lastFrames = [];
+let tab = null, me = null;
 
 function esc(s) { const d = document.createElement("div"); d.textContent = String(s == null ? "" : s); return d.innerHTML; }
 function report(html) { $("report").innerHTML = html; }
 function busy(btn, on, label) {
   if (on) { btn.dataset.label = btn.textContent; btn.textContent = label; btn.disabled = true; }
   else { btn.textContent = btn.dataset.label || btn.textContent; btn.disabled = false; }
-}
-
-// Forms are often embedded in iframes (e.g. Greenhouse on a company site), so every frame is used; if a frame
-// refuses injection (sandboxed ads, payment widgets) fall back to the main frame instead of failing.
-let allFrames = true;
-const target = () => (allFrames ? { tabId: tab.id, allFrames: true } : { tabId: tab.id, frameIds: [0] });
-async function inject() {
-  try {
-    await chrome.scripting.executeScript({ target: target(), files: ["extract.js", "fill.js"] });
-  } catch (e) {
-    if (!allFrames) throw e;
-    allFrames = false;
-    await chrome.scripting.executeScript({ target: target(), files: ["extract.js", "fill.js"] });
-  }
-}
-async function inFrames(func, args) {
-  const res = await chrome.scripting.executeScript({ target: target(), func, args: args || [] });
-  return res.filter((r) => r && r.result != null);
-}
-async function inFrame(frameId, func, args) {
-  const res = await chrome.scripting.executeScript({ target: { tabId: tab.id, frameIds: [frameId] }, func, args: args || [] });
-  return res[0] && res[0].result;
 }
 function appId() { return $("app").value ? parseInt($("app").value, 10) : null; }
 
@@ -48,6 +27,8 @@ async function init() {
   $("who").textContent = "Signed in as " + (me.user.full_name || me.user.username);
   $("main").hidden = false;
   $("draft").hidden = !me.ai.allowed;
+  const c = await chrome.storage.local.get("cards");
+  $("cards").checked = c.cards !== false;
   if (me.profile.missing.length)
     $("match-note").textContent = "Add to Settings for better filling: " + me.profile.missing.join(", ").replace(/_/g, " ") + ".";
   const apps = await api("/api/companion/applications?url=" + encodeURIComponent(tab.url || ""));
@@ -69,38 +50,13 @@ async function fill() {
   const btn = $("fill");
   busy(btn, true, "Reading the form…");
   try {
-    await inject();
-    const scans = await inFrames(() => globalThis.JACompanion.scan());
-    const fields = [];
-    lastFrames = scans.map((s) => ({ frameId: s.frameId, fields: s.result.fields }));
-    for (const s of lastFrames) for (const f of s.fields) fields.push(Object.assign({}, f, { key: s.frameId + ":" + f.key }));
-    if (!fields.length) { report('<p class="err">No form fields found on this page. Open the application form itself (after "Apply"), then try again.</p>'); return; }
-    btn.textContent = "Matching your answers…";
-    const plan = await api("/api/companion/plan", "POST", { app_id: appId(), url: tab.url, fields });
-    if (!plan || !plan.ok) { report('<p class="err">' + esc(plan && plan.error) + "</p>"); return; }
-    let files = {};
-    if (plan.data.fields.some((d) => d.action === "upload_resume")) {
-      btn.textContent = "Getting your resume…";
-      const pdf = await api("/api/companion/resume" + (appId() ? "?app_id=" + appId() : ""), "GET", null, true);
-      if (pdf && pdf.ok) files.resume = { data: pdf.data, name: pdf.name, type: pdf.type };
-    }
-    if (plan.data.cover_letter) {
-      files.cover = { data: btoa(unescape(encodeURIComponent(plan.data.cover_letter))), name: "Cover_Letter.txt", type: "text/plain" };
-    }
-    btn.textContent = "Filling…";
-    let filled = 0, kept = 0; const needs = [];
-    for (const fr of lastFrames) {
-      const decisions = plan.data.fields.filter((d) => d.key.startsWith(fr.frameId + ":"))
-        .map((d) => Object.assign({}, d, { key: d.key.slice(String(fr.frameId).length + 1) }));
-      if (!decisions.length) continue;
-      const r = await inFrame(fr.frameId, (f, d, x) => globalThis.JACompanion.apply(f, d, x), [fr.fields, decisions, files]);
-      if (r) { filled += r.filled; kept += r.kept || 0; needs.push(...r.needs); }
-    }
-    let html = '<p class="ok">Filled ' + filled + " field" + (filled === 1 ? "" : "s") + ".</p>";
-    if (kept) html += '<p class="muted small">Kept ' + kept + " answer" + (kept === 1 ? "" : "s") + " you had already typed.</p>";
-    if (needs.length) {
-      html += "<p>" + needs.length + " need you (highlighted amber):</p><ul>" +
-        needs.slice(0, 30).map((n) => "<li>" + esc(n.question) + (n.reason ? "<small>" + esc(n.reason) + "</small>" : "") + "</li>").join("") + "</ul>" +
+    const r = await JAFlow.fill(api, tab.id, appId(), tab.url, (t) => { btn.textContent = t; });
+    if (r.error) { report('<p class="err">' + esc(r.error) + "</p>"); return; }
+    let html = '<p class="ok">Filled ' + r.filled + " field" + (r.filled === 1 ? "" : "s") + ".</p>";
+    if (r.kept) html += '<p class="muted small">Kept ' + r.kept + " answer" + (r.kept === 1 ? "" : "s") + " you had already typed.</p>";
+    if (r.needs.length) {
+      html += "<p>" + r.needs.length + " need you (highlighted amber):</p><ul>" +
+        r.needs.slice(0, 30).map((n) => "<li>" + esc(n.question) + (n.reason ? "<small>" + esc(n.reason) + "</small>" : "") + "</li>").join("") + "</ul>" +
         '<p class="muted small">Answer them on the page, then press "Save my answers" so next time they fill automatically.</p>';
     } else {
       html += "<p>Everything is filled. Review the form and press Submit on the page.</p>";
@@ -115,9 +71,7 @@ async function learn() {
   const btn = $("learn");
   busy(btn, true, "Reading your answers…");
   try {
-    await inject();
-    const res = await inFrames(() => globalThis.JACompanion.collect());
-    const items = res.flatMap((r) => r.result);
+    const items = await JAFlow.collect(tab.id);
     const list = $("learn-list");
     list.innerHTML = "";
     if (!items.length) { report("<p>No new answers found on this page.</p>"); $("learn-box").hidden = true; return; }
@@ -150,13 +104,14 @@ async function draft() {
   const btn = $("draft");
   busy(btn, true, "Drafting…");
   try {
-    await inject();
-    const res = await inFrames(() => globalThis.JACompanion.openQuestions());
+    const state = { allFrames: true };
+    const target = await JAFlow.inject(tab.id, state);
+    const res = await JAFlow.inFrames(target, () => globalThis.JACompanion.openQuestions());
     let n = 0, fail = "";
     for (const r of res) {
       for (const q of r.result.slice(0, 5)) {
         const d = await api("/api/companion/draft", "POST", { app_id: appId(), question: q.question });
-        if (d && d.ok) { if (await inFrame(r.frameId, (k, t) => globalThis.JACompanion.putDraft(k, t), [q.key, d.data.answer])) n++; }
+        if (d && d.ok) { if (await JAFlow.inFrame(tab.id, r.frameId, (k, t) => globalThis.JACompanion.putDraft(k, t), [q.key, d.data.answer])) n++; }
         else fail = (d && d.error) || "failed";
       }
     }
@@ -172,10 +127,8 @@ async function applied() {
   const btn = $("applied");
   busy(btn, true, "Recording…");
   try {
-    let conf = "";
-    try { await inject(); conf = (await inFrames(() => globalThis.JACompanion.confirmation())).map((r) => r.result).filter(Boolean)[0] || ""; } catch (e) { conf = ""; }
-    const r = await api("/api/companion/applied", "POST", { app_id: appId(), url: tab.url, confirmation_text: conf });
-    report(r && r.ok ? '<p class="ok">Recorded as submitted in JobAgent.</p>' : '<p class="err">' + esc(r && r.error) + "</p>");
+    const r = await JAFlow.applied(api, tab.id, appId(), tab.url);
+    report(r.ok ? '<p class="ok">Recorded as applied in JobAgent.</p>' : '<p class="err">' + esc(r.error) + "</p>");
   } finally { busy(btn, false); }
 }
 
@@ -185,4 +138,5 @@ $("learn").addEventListener("click", learn);
 $("learn-save").addEventListener("click", learnSave);
 $("draft").addEventListener("click", draft);
 $("applied").addEventListener("click", applied);
+$("cards").addEventListener("change", (e) => chrome.storage.local.set({ cards: e.target.checked }));
 init();

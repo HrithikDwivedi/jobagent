@@ -22,3 +22,5 @@ button:disabled { opacity:.6; cursor:progress; }
 .foot { margin-top:12px; }
 body.options { width:auto; max-width:480px; margin:24px auto; }
 input { width:100%; padding:7px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); }
+.toggle { display: flex; gap: 6px; align-items: center; font-weight: 500; margin-top: 12px; }
+.toggle input { width: auto; margin: 0; }

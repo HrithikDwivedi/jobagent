@@ -735,7 +735,7 @@ def test_api_mark_applied(capi):
     d = capi["w"].db()
     a = d.one("SELECT status, external, submission_evidence_json FROM applications WHERE id=?", (capi["app"],))
     d.close()
-    assert a["status"] == "submitted" and "Application Companion" in a["submission_evidence_json"]
+    assert a["status"] == "submitted" and '"via": "companion"' in a["submission_evidence_json"]
     r = c.post("/api/companion/applied", headers=h, json={"app_id": capi["app"]})
     assert r.status_code == 409 and "already" in r.json()["error"]
 
@@ -1069,3 +1069,113 @@ def test_screening_answers_points_manual_cases_to_the_companion(tmp_path):
     d.close()
     page = w.client.get("/answers").text
     assert "2 applications need a person on the employer" in page and 'href="/companion"' in page
+
+
+def _click_in_card(page, text):
+    """Click a button inside the Companion card. Its shadow root is CLOSED (pages cannot press its buttons), so
+    locate it through the DevTools protocol (which sees closed roots) and click it like a person would."""
+    cdp = page.context.new_cdp_session(page)
+    doc = cdp.send("DOM.getDocument", {"depth": -1, "pierce": True})
+
+    def walk(n):
+        if n.get("nodeName") == "BUTTON":
+            label = "".join(c.get("nodeValue", "") for c in n.get("children", []) if c.get("nodeType") == 3)
+            if label.strip() == text:
+                return n
+        for key in ("children", "shadowRoots"):
+            for c in n.get(key, []) or []:
+                hit = walk(c)
+                if hit:
+                    return hit
+        return None
+    node = walk(doc["root"])
+    assert node, f"button {text!r} not found in the card"
+    q = cdp.send("DOM.getBoxModel", {"nodeId": node["nodeId"]})["model"]["content"]
+    page.mouse.click((q[0] + q[2]) / 2, (q[1] + q[5]) / 2)
+
+
+def test_card_pops_up_after_redirect_and_fills(capi, tmp_path, playwright_rt):
+    """Open the application from JobAgent; the job board redirects to the employer's own form; the Companion card
+    pops up there by itself, fills the form and records "I've applied"."""
+    import socket
+    import threading
+    import time
+
+    import uvicorn
+    d = capi["w"].db()
+    jid = insert_job(d, title="Forward Deployed Engineer (Graduate)", company="Stratos", country="GB",
+                     apply_url="https://www.arbeitnow.example/jobs/companies/stratos/fde-195694",
+                     user_id=capi["bea"], app_status="awaiting_approval")
+    app2 = d.scalar("SELECT id FROM applications WHERE job_id=?", (jid,))
+    d.close()
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    server = uvicorn.Server(uvicorn.Config(capi["w"].client.app, host="127.0.0.1", port=port, log_level="warning"))
+    threading.Thread(target=server.run, daemon=True).start()
+    for _ in range(50):
+        if server.started:
+            break
+        time.sleep(0.1)
+    base = f"http://127.0.0.1:{port}"
+    ext = tmp_path / "ext"
+    ext.mkdir()
+    for name, data in companion.extension_files(base).items():
+        (ext / name).write_bytes(data)
+    token = capi["hb"]["Authorization"].split()[1]
+    ctx = playwright_rt.chromium.launch_persistent_context(
+        str(tmp_path / "profile"), headless=True, channel="chromium",
+        args=[f"--disable-extensions-except={ext}", f"--load-extension={ext}"])
+    try:
+        sw = ctx.service_workers[0] if ctx.service_workers else ctx.wait_for_event("serviceworker", timeout=15000)
+        sw.evaluate("t => chrome.storage.local.set({token: t})", token)
+        # the job board redirects to the employer's form (exactly the Arbeitnow -> employer case)
+        ctx.route("https://www.arbeitnow.example/**", lambda r: r.fulfill(
+            status=200, content_type="text/html",
+            body='<meta http-equiv="refresh" content="0;url=https://careers.stratos.example/apply/fde">'))
+        ctx.route("https://careers.stratos.example/**", lambda r: r.fulfill(
+            status=200, content_type="text/html", body=FORM_HTML))
+        page = ctx.new_page()
+        page.goto(base + "/login")
+        page.fill("input[name=username]", "bea")
+        page.fill("input[name=password]", TEST_PASSWORD)
+        page.click("button[type=submit]")
+        page.goto(f"{base}/applications/{app2}")
+        assert page.locator("text=I’ve applied").count() >= 1           # the simple 3-step page
+        with ctx.expect_page() as newp:
+            page.click("a[data-apply-link]")
+        form = newp.value
+        form.wait_for_url("https://careers.stratos.example/**", timeout=15000)
+        assert form.url.startswith("https://careers.stratos.example/")
+        form.wait_for_selector("[data-jobagent-card]", state="attached", timeout=15000)   # popped up by itself
+        _click_in_card(form, "Fill this form")
+        form.wait_for_function("document.getElementById('fn').value === 'Bea' && "
+                               "document.getElementById('cv').files.length === 1 && "
+                               "document.getElementById('why').value.length > 0", timeout=20000)
+        assert form.input_value("#em") == "bea@example.com"
+        assert form.evaluate("document.getElementById('cv').files.length") == 1
+        badge = sw.evaluate("async () => { const [t] = await chrome.tabs.query({url: 'https://careers.stratos.example/*'});"
+                            " return chrome.action.getBadgeText({tabId: t.id}); }")
+        assert badge == "1"
+        _click_in_card(form, "I've applied")
+        for _ in range(100):
+            d = capi["w"].db()
+            st = d.scalar("SELECT status FROM applications WHERE id=?", (app2,))
+            d.close()
+            if st == "submitted":
+                break
+            time.sleep(0.1)
+        assert st == "submitted"
+        # a page cannot see or press the card's buttons
+        assert form.evaluate("document.querySelector('[data-jobagent-card]').shadowRoot") is None
+        # an unrelated site gets no card
+        ctx.route("https://news.example/**", lambda r: r.fulfill(status=200, content_type="text/html",
+                                                                 body="<h1>News</h1><form><input name=q></form>"))
+        other = ctx.new_page()
+        other.goto("https://news.example/today")
+        other.wait_for_timeout(1500)
+        assert other.locator("[data-jobagent-card]").count() == 0
+    finally:
+        ctx.close()
+        server.should_exit = True

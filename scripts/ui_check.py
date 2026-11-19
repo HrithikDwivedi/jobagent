@@ -53,7 +53,7 @@ JOBS = [
 PAGES = ["/", "/jobs", "/applications", "/mnc", "/sponsorship", "/prep", "/runs", "/audit", "/settings",
          "/recruiters", "/answers", "/logout", "/support", "/support?q=auto+apply+fill+form+manually",
          "/support/1", "/companion", "/admin/users", "/admin/support", "/admin/support/1",
-         "/jobs?view=all", "/welcome/2", "/welcome/3", "/welcome/5", "/admin/users?segment=healthcare"]
+         "/jobs?view=all", "/applications/1", "/welcome/2", "/welcome/3", "/welcome/5", "/admin/users?segment=healthcare"]
 NEW_USER = "nina.new"
 WIZARD = ["/welcome/1", "/welcome/2", "/welcome/3", "/welcome/4", "/welcome/5"]
 PUBLIC_PAGES = ["/login", "/signup", "/signed-out"]

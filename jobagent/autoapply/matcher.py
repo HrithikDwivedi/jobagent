@@ -66,7 +66,7 @@ RULES: list[tuple[str, re.Pattern]] = [(k, re.compile(p)) for k, p in [
     ("notice", r"\bnotice period\b|\bearliest (start|available|possible start)\b|\bstart date\b|"
                r"\bwhen (can|could|would) you (start|join)\b|\bavailab(le|ility) to (start|join)\b|\bjoining date\b"),
     ("salary", r"\bsalary\b|\bcompensation\b|\bpay (expectation|range|requirement)s?\b|\bexpected (pay|ctc)\b|"
-               r"\bctc\b|\bdesired pay\b|\bremuneration\b"),
+               r"\bctc\b|\bdesired pay\b|\bremuneration\b|\b(hourly|daily|day|contract|expected) rate\b"),
     ("how_heard", r"\bhow did you (hear|find|learn|come across)\b|\bwhere did you (hear|find|see|learn)\b|"
                   r"\breferral source\b|^source$|\bhow did you discover\b"),
     ("english", r"\benglish\b.*\b(proficien\w*|level|fluen\w*)|\b(proficien\w*|level|fluen\w*)\b.*\benglish\b"),
@@ -168,6 +168,40 @@ def choose_option(options: list[str], value: Any, *, prefer_first: bool = False)
     shortest = min(len(n) for _, n in hits)
     best = [o for o, n in hits if len(n) == shortest]
     return best[0] if len(best) == 1 else None
+
+
+def _num(tok: str) -> float | None:
+    m = re.match(r"(\d[\d,.]*)\s*(k|m)?$", tok.strip().lower())
+    if not m:
+        return None
+    try:
+        v = float(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+    return v * {"k": 1e3, "m": 1e6}.get(m.group(2) or "", 1)
+
+
+def salary_option(options: list[str], amount: float) -> str | None:
+    """Pick the salary band containing `amount` ("£30,000 - £40,000", "40k-50k", "Under 30,000", "100,000+")."""
+    best = None
+    for o in options:
+        t = o.lower().replace("\u2013", "-").replace("\u2014", "-")
+        nums = [n for n in (_num(x) for x in re.findall(r"\d[\d,.]*\s*[km]?\b", t)) if n is not None]
+        if not nums:
+            continue
+        if re.search(r"\b(under|less than|below|up to|upto|<)\b|^<", t):
+            lo, hi = 0.0, nums[0]
+        elif re.search(r"\+|\b(above|over|more than|plus|or more)\b|^>", t):
+            lo, hi = nums[0], float("inf")
+        elif len(nums) >= 2:
+            lo, hi = nums[0], nums[1]
+        else:
+            continue
+        if lo <= amount <= hi:
+            width = hi - lo
+            if best is None or width < best[0]:
+                best = (width, o)
+    return best[1] if best else None
 
 
 def decline_option(options: list[str]) -> str | None:
@@ -293,7 +327,7 @@ class Matcher:
         if rule == "notice":
             return c.get("notice_period") or None
         if rule == "salary":
-            return c.get("salary_expectation") or None
+            return self.salary_answer(f) or c.get("salary_expectation") or None
         if rule == "how_heard":
             return "Company careers page"
         if rule == "english":
@@ -308,6 +342,34 @@ class Matcher:
         if rule == "location":
             return self.city() if f.kind in ("typeahead", "combobox") else c.get("current_location")
         return None
+
+    def salary_answer(self, f: Field) -> str | None:
+        """The user's expected salary converted to the currency and pay period the form asks for (the currency the
+        question names, else the job's, else the user's own); a matching range for choice questions."""
+        exp = self.c.get("expected_salary") or {}
+        if not exp.get("amount"):
+            return None
+        from .. import fx
+        period = fx.period_in(f.label)
+        named = fx.currency_in(f.label) or fx.currency_in(" ".join(f.options[:6]))
+        target = {"salary_currency": named} if named else self.job
+        r = fx.expected_for_job(exp, target, self.c.get("_fx"), period)
+        if not r:
+            return None
+        if f.kind in CHOICE_KINDS and f.options:
+            return salary_option(f.options, r["amount"])
+        low = f.label.lower()
+        unit = 1e5 if re.search(r"\blakhs?\b|\blacs?\b|\blpa\b", low) else (
+            1e3 if re.search(r"\bin (thousands|k)\b|\(k\)|\b000s\b|\bk\s*(per|/)", low) else 1)
+        if unit != 1:
+            v = r["amount"] / unit
+            return f"{v:.1f}".rstrip("0").rstrip(".")
+        if f.kind == "number":
+            return str(r["amount"])
+        if named:
+            return f"{r['amount']:,}"
+        per = {"year": "per year", "month": "per month", "hour": "per hour", "day": "per day", "week": "per week"}
+        return f"{fx.fmt(r['amount'], r['currency'])} {per.get(period, '')}".strip()
 
     # ------------------------------------------------------------------ decisions
     def _answer_from_json(self, label_norm: str) -> str | None:
@@ -388,6 +450,8 @@ class Matcher:
         from_json = self._answer_from_json(label_norm)
         if from_json is None and norm(f.question) != label_norm:
             from_json = self._answer_from_json(norm(f.question))
+        if rule == "salary" and (self.c.get("expected_salary") or {}).get("amount"):
+            from_json = None          # the structured expected salary is converted per form; it always wins
         if rule == "how_heard":
             if f.kind in CHOICE_KINDS:
                 for pat in HOW_HEARD_PREFERENCE:

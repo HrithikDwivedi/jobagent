@@ -37,13 +37,26 @@
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <input type="hidden" name="section" value="candidate">
     <div class="form-grid">
-      {% for k, l, t in [('full_name', 'Full name', 'text'), ('email', 'Email', 'email'), ('phone', 'Phone', 'tel'), ('linkedin_url', 'LinkedIn URL', 'url'), ('github_url', 'GitHub URL (optional)', 'url'), ('portfolio_url', 'Portfolio / website (optional)', 'url'), ('current_location', 'Current location', 'text'), ('nationality', 'Nationality', 'text'), ('notice_period', 'Notice period / earliest start', 'text'), ('salary_expectation', 'Salary expectation', 'text')] %}
+      {% for k, l, t in [('full_name', 'Full name', 'text'), ('email', 'Email', 'email'), ('phone', 'Phone', 'tel'), ('linkedin_url', 'LinkedIn URL', 'url'), ('github_url', 'GitHub URL (optional)', 'url'), ('portfolio_url', 'Portfolio / website (optional)', 'url'), ('current_location', 'Current location', 'text'), ('nationality', 'Nationality', 'text'), ('notice_period', 'Notice period / earliest start', 'text')] %}
         <div class="field">
           <label for="c-{{ k }}">{{ l }}</label>
           <input type="{{ t }}" id="c-{{ k }}" name="{{ k }}" value="{{ cand.get(k) or '' }}" maxlength="200">
         </div>
       {% endfor %}
     </div>
+    {% set es = cand.expected_salary or {} %}
+    <fieldset class="salary-box">
+      <legend>Expected salary <span class="hint">(used on application forms; converted to each job's currency)</span></legend>
+      <div class="salary-row">
+        <div class="field mb0"><label for="c-sal-amt">Amount</label>
+          <input type="text" id="c-sal-amt" name="expected_amount" inputmode="decimal" maxlength="20" value="{{ es.amount or '' }}" placeholder="e.g. 15,00,000 or 45000 or 12 LPA"></div>
+        <div class="field mb0"><label for="c-sal-cur">Currency</label>
+          <select id="c-sal-cur" name="expected_currency">{% for c in currencies %}<option{% if c == (es.currency or s.currency) %} selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+        <div class="field mb0"><label for="c-sal-per">Per</label>
+          <select id="c-sal-per" name="expected_period">{% for k, l in [('year', 'Year'), ('month', 'Month'), ('hour', 'Hour'), ('day', 'Day')] %}<option value="{{ k }}"{% if k == (es.period or 'year') %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+      </div>
+      {% if salary_examples %}<p class="small muted mb0 mt">On forms this becomes: {% for e in salary_examples %}<strong>{{ e }}</strong>{{ ', ' if not loop.last }}{% endfor %} (European Central Bank rates of {{ fx_date }}).</p>{% endif %}
+    </fieldset>
     <label class="check"><input type="checkbox" name="requires_sponsorship_outside" value="1"{% if cand.requires_sponsorship_outside %} checked{% endif %}> I require visa sponsorship outside the countries listed below</label>
     <label class="check"><input type="checkbox" name="willing_to_relocate" value="1"{% if cand.willing_to_relocate %} checked{% endif %}> I am willing to relocate</label>
     <div class="field mt">
@@ -110,13 +123,13 @@
     </fieldset>
     <div class="form-grid">
       <div class="field">
-        <label for="s-minsal">Minimum yearly salary</label>
-        <input type="number" id="s-minsal" name="min_salary" min="0" max="1000000" step="1000" value="{{ s.min_salary }}">
+        <label for="s-minsal">Minimum yearly salary <span class="hint">(jobs below it rank lower)</span></label>
+        <input type="text" id="s-minsal" name="min_salary" inputmode="numeric" maxlength="20" value="{{ s.min_salary or '' }}" placeholder="e.g. 45000 or 15,00,000">
       </div>
       <div class="field">
         <label for="s-cur">Currency</label>
         <select id="s-cur" name="currency">
-          {% for c in ['EUR', 'GBP', 'CHF', 'SEK', 'DKK', 'PLN', 'CZK', 'USD', 'INR'] %}<option value="{{ c }}"{% if s.currency == c %} selected{% endif %}>{{ c }}</option>{% endfor %}
+          {% for c in currencies %}<option value="{{ c }}"{% if s.currency == c %} selected{% endif %}>{{ c }}</option>{% endfor %}
         </select>
       </div>
       <div class="field">

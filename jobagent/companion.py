@@ -108,6 +108,25 @@ def _url_key(url: str) -> tuple[str, str, dict]:
     return host, path, parse_qs(parts.query)
 
 
+def url_keys(*urls: str | None) -> list[str]:
+    """Normalised keys the extension matches page URLs against (host + path, and Greenhouse job ids)."""
+    out = []
+    for u in urls:
+        if not u:
+            continue
+        host, path, query = _url_key(u)
+        if host:
+            k = host + path
+            if k not in out:
+                out.append(k)
+        m = re.search(r"(?:gh_jid=|/jobs/)(\d{5,})", u)
+        if m and "greenhouse" in (u or "") or (query.get("gh_jid") if host else None):
+            gid = (query.get("gh_jid") or [m.group(1) if m else ""])[0]
+            if gid and f"gh:{gid}" not in out:
+                out.append(f"gh:{gid}")
+    return out
+
+
 def active_applications(db: Database, user_id: int, limit: int = 40) -> list[dict]:
     return db.all(
         "SELECT a.id, a.job_id, a.status, j.title, e.name AS company, j.apply_url, j.canonical_url AS url, j.country "
@@ -191,7 +210,9 @@ def plan(db: Database, *, user_id: int, fields: list, app_id: int | None = None)
             cover = db.scalar("SELECT body FROM cover_letters WHERE id=? AND user_id=?",
                               (app["cover_letter_id"], user_id)) or ""
     canon = resume_store.canonical(db, user_id=user_id)
-    matcher = Matcher(s["candidate"], job, answers, (canon or {}).get("structured") or {}, s["auto_apply"], cover)
+    from .fx import rates
+    matcher = Matcher({**s["candidate"], "_fx": rates(db)}, job, answers, (canon or {}).get("structured") or {},
+                      s["auto_apply"], cover)
     out, filled, needs = [], 0, 0
     for f in _fields(fields):
         if SENSITIVE.search(norm(f.label)) or f.kind == "password":
@@ -278,15 +299,9 @@ def mark_applied(db: Database, *, user_id: int, app_id: int, page_url: str, conf
     app = db.one("SELECT * FROM applications WHERE id=? AND user_id=?", (app_id, user_id))
     if not app:
         raise CompanionError("Application not found.", 404)
-    conf = " ".join((confirmation_text or "").split())[:1500]
-    note = f"Submitted with the Application Companion on {(page_url or '')[:300]}" + (f" — page said: {conf}" if conf else "")
     try:
-        if app["status"] in ("application_started", "submission_uncertain"):
-            out = apps.record_outcome(db, app_id, "submitted", actor, user_id=user_id,
-                                      confirmation_text=(conf if len(conf) >= 20 else note))
-        else:
-            out = apps.mark_applied_externally(db, app["job_id"], actor, utcnow().date().isoformat(), note,
-                                               user_id=user_id)
+        out = apps.mark_applied(db, app_id, actor, user_id=user_id, confirmation_text=confirmation_text,
+                                page_url=page_url, via="companion")
     except apps.WorkflowError as e:
         raise CompanionError(e.message, 409) from None
     audit(db, actor=actor, entity="application", entity_id=app_id, action="companion_marked_applied",
@@ -339,6 +354,13 @@ def extension_files(server_url: str | None) -> dict[str, bytes]:
     files["extract.js"] = ("// Field discovery shared with JobAgent auto-apply (generated - do not edit).\n"
                            "globalThis.__jaExtract = " + EXTRACT_JS.strip() + ";\n").encode()
     files["defaults.js"] = (f"self.JA_DEFAULT_SERVER = {_json.dumps((server_url or '').rstrip('/'))};\n").encode()
+    # the small script that links "Open application page" clicks to the new tab runs only on THIS JobAgent
+    origin = (server_url or "").rstrip("/")
+    if re.match(r"^(https://[^/\s]+|http://(127\.0\.0\.1|localhost)(:\d+)?)$", origin):
+        manifest = _json.loads(files["manifest.json"])
+        manifest["content_scripts"] = [{"matches": [origin + "/applications/*"], "js": ["jobagent_page.js"],
+                                        "run_at": "document_idle"}]
+        files["manifest.json"] = (_json.dumps(manifest, indent=2) + "\n").encode()
     return files
 
 

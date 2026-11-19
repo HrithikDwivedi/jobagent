@@ -285,6 +285,11 @@ def run_agent(db: Database, cfg: AppConfig, *, trigger: str = "manual", http: Ht
         def time_left(reserve: float = 0.0) -> bool:
             return deadline is None or time.monotonic() + reserve < deadline
 
+        try:
+            from .fx import rates as _fx_rates
+            _fx_rates(db, http if discover else None)
+        except Exception:  # never block a run on exchange rates
+            pass
         if discover:
             status = _discover(db, http, g, ctx, deadline, time_left, status,
                                adzuna_keys=(cfg.adzuna_app_id, cfg.adzuna_app_key), personal=personal_for is not None)
@@ -410,6 +415,8 @@ def _process_user(db: Database, cfg: AppConfig, ctx: RunContext, uid: int, provi
                   time_left) -> tuple[dict, bool]:
     """Score, prepare and policy-approve for one user. Returns (stats, finished_within_budget)."""
     s = settings_mod.get_all(db, uid)
+    from .fx import rates as _fx_rates
+    s["_fx"] = _fx_rates(db)
     ust = {"scored": 0, "prepared": 0, "policy_approved": 0}
     ai = AIService(db, provider, s["ai"], ctx.id, user_id=uid)   # disabled unless the admin granted AI access
     try:

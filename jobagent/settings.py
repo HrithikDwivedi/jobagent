@@ -33,7 +33,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "requires_sponsorship_outside": True,
         "languages": [{"language": "English", "level": "unverified"}],
         "notice_period": None,                        # must be set by the user before it is used in answers
-        "salary_expectation": None,
+        "salary_expectation": None,                   # text shown on forms (derived from expected_salary)
+        "expected_salary": None,                      # {"amount": 1200000, "currency": "INR", "period": "year"}
         "willing_to_relocate": True,
     },
     "target_countries": {
@@ -114,6 +115,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "answer_library": [],
     # What the user is looking for (onboarding): up to 3 industries and 3 roles (taxonomy ids) plus roles typed in
     # their own words, experience level and employment types. Empty = legacy software-engineering profile.
+    # administrator: screens turned off per target industry ({industry: ["/mnc", ...]}); see access.py
+    "segment_screens": {},
     "career": {"industries": [], "roles": [], "custom_roles": [], "experience": None,
                "employment_types": ["full_time"], "onboarded_at": None},
     "resume_style": {
@@ -243,7 +246,11 @@ def validate(key: str, value: Any) -> Any:
     if key in ("include_india_remote",):
         return bool(value)
     if key == "min_salary":
-        return _int(value, key, 0, 1_000_000)
+        from .fx import parse_amount
+        amount = parse_amount(value) if not isinstance(value, bool) else None
+        if amount is None and str(value).strip() not in ("", "0", "None"):
+            raise SettingsError("min_salary must be a number (e.g. 45000 or 15,00,000)")
+        return _int(int(amount or 0), key, 0, 1_000_000_000)
     if key == "currency":
         if value not in CURRENCIES:
             raise SettingsError("Unsupported currency")
@@ -388,6 +395,17 @@ def validate(key: str, value: Any) -> Any:
         return _validate_candidate(value)
     if key == "career":
         return _validate_career(value)
+    if key == "segment_screens":
+        from . import taxonomy
+        from .access import SCREEN_PATHS
+        if not isinstance(value, dict):
+            raise SettingsError("segment_screens must be an object")
+        out = {}
+        for ind, paths in value.items():
+            if ind not in taxonomy.BY_ID or not isinstance(paths, list):
+                raise SettingsError(f"Unknown industry {ind!r}.")
+            out[ind] = [p for p in dict.fromkeys(paths) if p in SCREEN_PATHS]
+        return out
     if key == "answer_library":
         if not isinstance(value, list):
             raise SettingsError("answer_library must be a list")
@@ -406,6 +424,26 @@ def validate(key: str, value: Any) -> Any:
             out.append({"question": q, "answer": a})
         return out
     raise SettingsError(f"No validator for '{key}'")  # pragma: no cover
+
+
+def _expected_salary(value: Any) -> dict | None:
+    from .fx import PERIODS, parse_amount
+    if not value:
+        return None
+    if not isinstance(value, dict):
+        raise SettingsError("expected_salary must be an object")
+    amount = parse_amount(value.get("amount"))
+    if amount is None or amount <= 0:
+        return None
+    if amount > 1_000_000_000:
+        raise SettingsError("Expected salary is too large.")
+    cur = str(value.get("currency") or "EUR").upper()
+    if cur not in CURRENCIES:
+        raise SettingsError("Unsupported salary currency.")
+    period = value.get("period") or "year"
+    if period not in PERIODS:
+        raise SettingsError("Salary period must be year, month, week, day or hour.")
+    return {"amount": int(round(amount)) if amount >= 100 else round(amount, 2), "currency": cur, "period": period}
 
 
 def _validate_candidate(value: Any) -> dict:
@@ -451,6 +489,11 @@ def _validate_candidate(value: Any) -> dict:
     for k in ("full_name", "current_location", "nationality", "notice_period", "salary_expectation"):
         if out[k] is not None:
             out[k] = str(out[k]).strip()[:120] or None
+    out["expected_salary"] = _expected_salary(out.get("expected_salary"))
+    if out["expected_salary"]:
+        from .fx import fmt
+        es = out["expected_salary"]
+        out["salary_expectation"] = f"{fmt(es['amount'], es['currency'])} per {es['period']}"
     out["requires_sponsorship_outside"] = bool(out["requires_sponsorship_outside"])
     out["willing_to_relocate"] = bool(out["willing_to_relocate"])
     return out
@@ -472,7 +515,7 @@ def env_candidate_defaults() -> dict:
 
 # Multi-user split. GLOBAL keys are administrator settings shared by the whole installation (stored in `settings`);
 # every other key is private to one user (stored in `user_settings`).
-GLOBAL_KEYS = frozenset({"sources", "mnc", "ai", "schedule", "operating_mode"})
+GLOBAL_KEYS = frozenset({"sources", "mnc", "ai", "schedule", "operating_mode", "segment_screens"})
 USER_KEYS = frozenset(k for k in DEFAULT_SETTINGS if k not in GLOBAL_KEYS)
 
 

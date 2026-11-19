@@ -314,7 +314,9 @@ class _Run:
         cover_path.write_text(cover, encoding="utf-8")
         # this application's reviewed answers first, then the user's reusable screening-answer library
         answers = list(loads(app["answers_json"], []) or []) + list(self.s.get("answer_library") or [])
-        matcher = Matcher(cand, job, answers, _canonical_structured(self.db, app), self.pol, cover)
+        from ..fx import rates
+        matcher = Matcher({**cand, "_fx": rates(self.db)}, job, answers, _canonical_structured(self.db, app),
+                          self.pol, cover)
         return {"resume": str(resume_path), "cover": str(cover_path)}, matcher
 
     def _open(self, page, bctx, driver: BaseDriver, url: str, family) -> object:

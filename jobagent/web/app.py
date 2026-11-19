@@ -32,6 +32,7 @@ from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from .. import agent as agent_mod
+from .. import access
 from .. import answers as answers_mod
 from .. import audience
 from .. import companion
@@ -77,6 +78,7 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
     templates.env.autoescape = True
     templates.env.filters["role_label"] = taxonomy.role_label
     templates.env.filters["industry_label"] = taxonomy.industry_label
+    templates.env.filters["screen_label"] = lambda p: access.LABELS.get(p, p)
     signer = URLSafeTimedSerializer(cfg.secret_key or secrets.token_hex(32), salt="flash")
     state = {"migrated": False, "bg_run": None}
     lock = threading.Lock()
@@ -120,13 +122,7 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
             me = int(sess["user_id"])
             admin = sess.get("role") == "admin"
             us = settings_mod.get_all(db, me)
-            car = us.get("career") or {}
-            hide = []
-            if taxonomy.has_career(car) and not set(car.get("industries") or []) & {"technology", "finance",
-                                                                                     "business"}:
-                hide.append("/mnc")                       # the Top-MNC catalogue is tech, banks and consulting
-            if not (us.get("candidate") or {}).get("requires_sponsorship_outside", True):
-                hide.append("/sponsorship")               # no visa needed: sponsorship pages are noise
+            hide = access.resolve(db, me, settings=us)["hidden"]   # admin-assigned / industry / automatic
             return {"nav_hide": hide, "career_summary": onboarding_mod.summary(db, me),
                     "has_ai": ai_access(db, me)["allowed"],
                     "support_unread": helpdesk.unread_for_user(db, me),
@@ -222,6 +218,17 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
                               for p in ONBOARDING_OPEN)):
                 # new accounts answer the onboarding questions before anything else
                 resp = RedirectResponse("/welcome", status_code=303)
+            elif (request.state.session is not None and request.state.session.get("role") != "admin"
+                  and any(path == p or path.startswith(p + "/") for p in access.SCREEN_PATHS)
+                  and access.blocked(access.resolve(get_db(request), int(request.state.session["user_id"]))["hidden"],
+                                     path)):
+                # a screen the administrator turned off for this user: gone from the menu and refused here
+                if request.method == "GET":
+                    resp = RedirectResponse("/", status_code=303)
+                    flash_cookie(resp, "error", "That screen is not enabled for your account. Ask the administrator "
+                                                "under Help & Support if you need it.")
+                else:
+                    resp = PlainTextResponse("Not found", status_code=404)
             elif path.startswith("/admin") and not is_admin(request):
                 # admin-only area: indistinguishable from a missing page for everyone else
                 resp = PlainTextResponse("Not found", status_code=404) if request.method != "GET" else \
@@ -776,6 +783,13 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         return Response(f["data"], media_type=f["content_type"],
                         headers={"Content-Disposition": f'attachment; filename="file-{file_id}"'})
 
+    @app.post("/applications/{app_id}/applied")
+    async def applied(request: Request, app_id: int):
+        return await _app_action(request, app_id, lambda db, d: apps.mark_applied(
+            db, app_id, actor(request), user_id=uid(request), reference_number=d.get("reference_number", ""),
+            confirmation_text=d.get("confirmation_text", "")),
+            "Marked as applied. Update it here when you hear back.")
+
     @app.post("/applications/{app_id}/retry")
     async def retry(request: Request, app_id: int):
         return await _app_action(request, app_id, lambda db, d: apps.retry_after_failure(
@@ -1267,7 +1281,23 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
             "ai_month": round(float(usage_month or 0), 4),
             "config_problems": validate_config(cfg) if is_admin(request) else [],
             "db_kind": "PostgreSQL" if cfg.database_url.startswith("postgres") else "SQLite",
+            **_salary_preview(db, s),
         })
+
+    def _salary_preview(db: Database, s: dict) -> dict:
+        from .. import fx
+        es = (s.get("candidate") or {}).get("expected_salary") or {}
+        rates = fx.rates(db)
+        examples = []
+        if es.get("amount"):
+            targets = [c for c in settings_mod.all_target_countries(s)][:6]
+            seen = set()
+            for c in targets:
+                r = fx.expected_for_job(es, {"country": c}, rates)
+                if r and r["currency"] not in seen and r["currency"] != es.get("currency"):
+                    seen.add(r["currency"])
+                    examples.append(f"{fx.fmt(r['amount'], r['currency'])}/year in {settings_mod.COUNTRY_NAMES.get(c, c)}")
+        return {"currencies": settings_mod.CURRENCIES, "salary_examples": examples[:4], "fx_date": rates.get("date")}
 
     @app.post("/settings")
     async def settings_save(request: Request):
@@ -1289,8 +1319,17 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
             if section == "candidate":
                 cand = dict(s["candidate"])
                 for k in ("full_name", "email", "phone", "linkedin_url", "github_url", "portfolio_url",
-                          "current_location", "nationality", "notice_period", "salary_expectation"):
+                          "current_location", "nationality", "notice_period"):
                     cand[k] = data.get(k) or None
+                amount = (data.get("expected_amount") or "").strip()
+                if amount:
+                    from ..fx import parse_amount
+                    if parse_amount(amount) is None:
+                        raise settings_mod.SettingsError("Expected salary must be a number, e.g. 45000 or 15,00,000.")
+                    cand["expected_salary"] = {"amount": amount, "currency": data.get("expected_currency") or "EUR",
+                                               "period": data.get("expected_period") or "year"}
+                else:
+                    cand["expected_salary"], cand["salary_expectation"] = None, None
                 cand["requires_sponsorship_outside"] = data.get("requires_sponsorship_outside") == "1"
                 cand["willing_to_relocate"] = data.get("willing_to_relocate") == "1"
                 cand["languages"] = [{"language": l, "level": data.get(f"lang_level_{i}", "unverified")}
@@ -1716,6 +1755,9 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
             if not u:
                 return JSONResponse({"error": "Access token invalid or expired. Create a new one on the "
                                               "Application Companion page."}, status_code=401)
+            if "/companion" in access.resolve(get_db(request), u["id"])["hidden"]:
+                return JSONResponse({"error": "The Application Companion is not enabled for your account. Ask "
+                                              "the administrator."}, status_code=403)
             try:
                 res = fn(request, u)
                 if inspect.isawaitable(res):
@@ -1745,7 +1787,8 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         m = companion.match_application(db, u["id"], url) if url else None
 
         def slim(a):
-            return {"id": a["id"], "title": a["title"], "company": a["company"], "status": a["status"]}
+            return {"id": a["id"], "title": a["title"], "company": a["company"], "status": a["status"],
+                    "keys": companion.url_keys(a.get("apply_url"), a.get("url"))}
         return {"match": slim(m) if m else None,
                 "applications": [slim(a) for a in companion.active_applications(db, u["id"])]}
 
@@ -1809,7 +1852,7 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         if not users_mod.get_user(db, user_id):
             return not_found(request, "User not found.")
         grant = data.get("grant") == "1"
-        raw = (data.get("monthly_limit_usd") or "").strip()
+        raw = (data.get("monthly_limit_usd") or "").strip() if data.get("ai_mode", "limit") == "limit" else ""
         back = safe_next(data.get("next") or "/admin/users#all-users")
         try:
             limit = float(raw) if raw else None
@@ -1828,6 +1871,47 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
                      else ".")
             return redirect(back, "ok", f"AI access granted to '{u['username']}'{extra}")
         return redirect(back, "ok", f"AI access removed from '{u['username']}'.")
+
+    @app.post("/admin/users/{user_id}/screens")
+    async def admin_user_screens(request: Request, user_id: int):
+        data = await form(request)
+        db = get_db(request)
+        if not users_mod.get_user(db, user_id):
+            return not_found(request, "User not found.")
+        try:
+            access.set_user(db, user_id, data.get("mode", ""), data.getlist("screen"), actor(request))
+        except access.AccessError as e:
+            return redirect("/admin/users#all-users", "error", str(e))
+        return redirect(safe_next(data.get("next") or "/admin/users#all-users"), "ok", "Screens updated.")
+
+    @app.post("/admin/segments/{industry}/screens")
+    async def admin_segment_screens(request: Request, industry: str):
+        data = await form(request)
+        try:
+            access.set_segment(get_db(request), industry, data.getlist("screen"), actor(request))
+        except (access.AccessError, settings_mod.SettingsError) as e:
+            return redirect("/admin/users#audience", "error", str(e))
+        return redirect("/admin/users#audience", "ok",
+                        f"Screens for {taxonomy.industry_label(industry)} saved. Users with custom screens keep theirs.")
+
+    @app.post("/admin/ai/bulk")
+    async def admin_ai_bulk(request: Request):
+        data = await form(request)
+        db = get_db(request)
+        grant = data.get("grant") == "1"
+        n = 0
+        for u in db.all("SELECT id, ai_access FROM users WHERE role <> 'admin' AND status='approved'"):
+            if bool(u["ai_access"]) == grant and grant is False:
+                continue
+            try:
+                users_mod.set_ai_access(db, u["id"], grant, actor(request), actor_id=uid(request),
+                                        monthly_limit_usd=None)
+                n += 1
+            except users_mod.AccountError:
+                continue
+        return redirect("/admin/users#all-users", "ok",
+                        f"AI {'granted (full access, no monthly limit) to' if grant else 'removed from'} {n} account"
+                        f"{'s' if n != 1 else ''}.")
 
     @app.get("/admin/support", response_class=HTMLResponse)
     def admin_support(request: Request, status: str = "active", category: str = "", q: str = ""):
@@ -1910,6 +1994,7 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         aud = audience.overview(db, adzuna_configured=bool(cfg.adzuna_app_id and cfg.adzuna_app_key))
         for u in rows:
             u["profile"] = aud["profiles"].get(u["id"])
+            u["access"] = access.resolve(db, u["id"])
         segment = segment if segment in taxonomy.BY_ID or segment == "unset" else ""
         shown = [u for u in rows if not segment or (
             (segment == "unset" and u["profile"] and not u["profile"]["self_reported"]) or
@@ -1924,6 +2009,8 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
             "chart_industries": charts.hbar(aud["industries_by_users"], "Users by target industry"),
             "chart_levels": charts.hbar(aud["levels"], "Users by experience level"),
             "role_label": taxonomy.role_label, "industry_label": taxonomy.industry_label,
+            "screens": access.SCREENS, "screen_labels": access.LABELS, "segment_rules": access.segment_rules(db),
+            "matrix": access.matrix(db),
             "adzuna": bool(cfg.adzuna_app_id and cfg.adzuna_app_key),
             "mail_provider": app.state.mailer.provider.name, "admin_email": cfg.admin_email,
             "public_url": base_url(request)})

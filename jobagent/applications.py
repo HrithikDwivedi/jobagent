@@ -22,19 +22,20 @@ from .settings import COUNTRY_NAMES
 PRE_SUBMIT = {"shortlisted", "awaiting_approval", "ready_to_apply"}
 POST_SUBMIT = {"submitted", "interview", "assessment", "offer", "rejected"}
 TRANSITIONS: dict[str, set[str]] = {
-    "shortlisted": {"awaiting_approval", "withdrawn", "closed"},
-    "awaiting_approval": {"ready_to_apply", "shortlisted", "withdrawn", "closed"},
-    "ready_to_apply": {"application_started", "awaiting_approval", "withdrawn", "closed"},
+    # "submitted" from every pre-submission state = the user's one-click "I've applied" (mark_applied)
+    "shortlisted": {"awaiting_approval", "withdrawn", "closed", "submitted"},
+    "awaiting_approval": {"ready_to_apply", "shortlisted", "withdrawn", "closed", "submitted"},
+    "ready_to_apply": {"application_started", "awaiting_approval", "withdrawn", "closed", "submitted"},
     "application_started": {"submitted", "submission_uncertain", "submission_failed"},
     "submission_uncertain": {"submitted", "submission_failed"},
-    "submission_failed": {"awaiting_approval", "withdrawn", "closed"},
+    "submission_failed": {"awaiting_approval", "withdrawn", "closed", "submitted"},
     "submitted": {"interview", "assessment", "rejected", "offer", "withdrawn"},
     "interview": {"interview", "assessment", "offer", "rejected", "withdrawn"},
     "assessment": {"interview", "offer", "rejected", "withdrawn"},
     "offer": {"withdrawn", "rejected"},
     "rejected": set(),
     "withdrawn": set(),
-    "closed": {"shortlisted"},
+    "closed": {"shortlisted", "submitted"},
 }
 STATUS_LABELS = {
     "discovered": "Discovered", "shortlisted": "Shortlisted", "awaiting_approval": "Awaiting approval",
@@ -139,7 +140,14 @@ def screening_answers(candidate: dict, job: dict) -> tuple[list[dict], list[dict
     else:
         missing.append({"item": "notice_period", "why": "Notice period not set in Settings (commonly asked).",
                         "blocking": False})
-    if candidate.get("salary_expectation"):
+    exp = candidate.get("expected_salary") or {}
+    if exp.get("amount"):
+        from .fx import expected_for_job, fmt
+        r = expected_for_job(exp, job, candidate.get("_fx"))
+        add("Salary expectation", f"{fmt(r['amount'], r['currency'])} per year"
+            + (f" (converted from {fmt(exp['amount'], exp['currency'])} per {exp.get('period', 'year')})"
+               if r["currency"] != exp["currency"] else ""), "settings")
+    elif candidate.get("salary_expectation"):
         add("Salary expectation", candidate["salary_expectation"], "settings")
     else:
         missing.append({"item": "salary_expectation", "why": "Salary expectation not set; answer manually if asked.",
@@ -211,7 +219,8 @@ def prepare(db: Database, job_id: int, actor: str, resume_version_id: int | None
     if job["status"] != "open":
         raise WorkflowError("job_not_open", f"Job is {job['status']}.")
     s = settings_mod.get_all(db, user_id)
-    answers, missing = screening_answers(s["candidate"], job)
+    from .fx import rates
+    answers, missing = screening_answers({**s["candidate"], "_fx": rates(db)}, job)
     with db.transaction():
         ver = _next_letter_version(db, user_id, job_id)
         cl_id = db.insert("INSERT INTO cover_letters(job_id, user_id, resume_version_id, version, body, method, status, "
@@ -602,6 +611,32 @@ def mark_applied_externally(db: Database, job_id: int, actor: str, applied_on: s
         audit(db, actor=actor, entity="application", entity_id=app["id"], action="mark_external",
               from_status=app["status"], to_status="submitted", detail={"applied_on": applied_on})
     return _get_app(db, app["id"], user_id)
+
+
+APPLIABLE = PRE_SUBMIT | {"application_started", "submission_uncertain", "submission_failed", "closed"}
+
+
+def mark_applied(db: Database, app_id: int, actor: str, *, user_id: int, reference_number: str = "",
+                 confirmation_text: str = "", page_url: str = "", via: str = "dashboard") -> dict:
+    """One click: "I've applied". Works from any pre-submission state (with or without an approval); records the
+    user's declaration plus whatever confirmation they add. Any unused approval is revoked so auto-apply can never
+    submit the same application again."""
+    with db.transaction():
+        app = _get_app(db, app_id, user_id)
+        if app["status"] not in APPLIABLE:
+            raise WorkflowError("already_recorded", f"This application is already '{STATUS_LABELS.get(app['status'], app['status'])}'.")
+        ref = (reference_number or "").strip()[:200]
+        conf = " ".join((confirmation_text or "").split())[:4000]
+        evidence = {"type": "user_declared", "via": via, "reference_number": ref or None,
+                    "confirmation_text": conf or None, "page_url": (page_url or "")[:500] or None,
+                    "recorded_by": actor, "recorded_at": iso()}
+        db.run("UPDATE approvals SET revoked_at=? WHERE application_id=? AND consumed_at IS NULL AND revoked_at IS NULL",
+               (iso(), app["id"]))
+        return _transition(db, app, "submitted", actor, f"marked as applied ({via})",
+                           {"via": via, "evidence_types": [k for k in ("reference_number", "confirmation_text",
+                                                                       "page_url") if evidence[k]]},
+                           {"submitted_at": iso(), "reference_number": ref or None,
+                            "submission_evidence_json": dumps(evidence)})
 
 
 def update_progress(db: Database, app_id: int, actor: str, to_status: str | None = None, *, user_id: int,

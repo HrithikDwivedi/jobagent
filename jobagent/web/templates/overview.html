@@ -12,7 +12,7 @@
       <p>Your job search at a glance. Statistics exclude demo/sample data.</p>
     {% endif %}
   </div>
-  <div class="actions"><a class="btn btn-primary" href="/jobs"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg> Browse jobs</a><a class="btn" href="/runs"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#runs"></use></svg> Agent runs</a></div>
+  <div class="actions"><a class="btn btn-primary" href="/jobs"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg> Browse jobs</a>{% if '/runs' not in nav_hide|default([]) %}<a class="btn" href="/runs"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#runs"></use></svg> Agent runs</a>{% endif %}</div>
 </div>
 
 {% if not (career_summary|default({})).has_career %}
@@ -32,10 +32,10 @@
 <section class="card" aria-labelledby="onboard">
   <h2 id="onboard">Get started</h2>
   <ol class="checklist">
-    <li>{% if resume %}<span class="badge b-green">Done</span>{% else %}<span class="badge b-amber">To do</span>{% endif %} <a href="/studio">Upload your resume</a> in Resume Studio (it becomes your canonical resume).</li>
+    <li>{% if resume %}<span class="badge b-green">Done</span>{% else %}<span class="badge b-amber">To do</span>{% endif %} {% if '/studio' not in nav_hide|default([]) %}<a href="/studio">Upload your resume</a>{% else %}Upload your resume{% endif %} in Resume Studio (it becomes your canonical resume).</li>
     <li><a href="/settings#candidate">Confirm your candidate facts</a> (work authorisation, languages, notice period) — answers are never guessed.</li>
     <li><a href="/welcome/2">Choose your industries, roles and countries</a>.</li>
-    <li>{% if o.jobs_total %}<span class="badge b-green">Done</span>{% else %}<span class="badge b-amber">To do</span>{% endif %} <a href="/runs">Run the agent</a> to discover and score jobs.</li>
+    <li>{% if o.jobs_total %}<span class="badge b-green">Done</span>{% else %}<span class="badge b-amber">To do</span>{% endif %} {% if '/runs' not in nav_hide|default([]) %}<a href="/runs">Run the agent</a>{% else %}Discover jobs (runs automatically every day){% endif %} to discover and score jobs.</li>
   </ol>
 </section>
 {% endif %}
@@ -81,7 +81,7 @@
       <p>{{ o.new_latest_run }} new job{{ '' if o.new_latest_run == 1 else 's' }} discovered.</p>
       {% if is_admin %}<a class="btn btn-sm" href="/runs/{{ o.last_run.id }}">View run details</a>{% endif %}
     {% else %}
-      <div class="empty"><strong>No completed runs yet</strong>Start one from <a href="/runs">Agent Runs</a>.</div>
+      <div class="empty"><strong>No completed runs yet</strong>{% if '/runs' not in nav_hide|default([]) %}Start one from <a href="/runs">Agent Runs</a>.{% else %}Jobs are discovered automatically every day.{% endif %}</div>
     {% endif %}
   </section>
 </div>

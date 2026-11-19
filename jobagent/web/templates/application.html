@@ -5,7 +5,8 @@
 {% set st = a.status %}
 {% set editable = st in ['awaiting_approval', 'shortlisted'] %}
 {% set dest = a.submitted_url or (job.apply_url if job else None) %}
-{% set stage = {'shortlisted': 0, 'awaiting_approval': 1, 'ready_to_apply': 2, 'application_started': 3, 'submission_uncertain': 3, 'submission_failed': 3, 'submitted': 4, 'rejected': 4, 'interview': 5, 'assessment': 5, 'offer': 5}.get(st, -1) %}
+{% set stage = {'shortlisted': 0, 'awaiting_approval': 0, 'ready_to_apply': 0, 'application_started': 0, 'submission_failed': 0, 'closed': 0, 'submission_uncertain': 1, 'submitted': 1, 'interview': 2, 'assessment': 2, 'offer': 2, 'rejected': 2}.get(st, -1) %}
+{% set appliable = st in ['shortlisted', 'awaiting_approval', 'ready_to_apply', 'application_started', 'submission_uncertain', 'submission_failed', 'closed'] %}
 
 <p class="small"><a class="back-link" href="/applications"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#arrow-left"></use></svg> All applications</a></p>
 <div class="page-head">
@@ -49,13 +50,58 @@
   </div>
 {% endif %}
 
-<ol class="stepper" aria-label="Application progress">
-  {% for label in ['Prepared', 'Approved', 'Opened on employer site', 'Submitted (with evidence)', 'Interview / Offer'] %}
+<ol class="stepper stepper-3" aria-label="Application progress">
+  {% for label in ['Ready to apply', 'Applied', 'Heard back'] %}
     {% set i = loop.index0 %}
-    {% set bad = (i == 3 and st in ['submission_failed', 'submission_uncertain']) or (i == 4 and st == 'rejected') %}
-    <li class="{{ 'bad' if bad else ('done' if i < stage else ('current' if i == stage else '')) }}"{% if i == stage %} aria-current="step"{% endif %}>{{ label }}{% if bad %} — {{ labels.get(st) }}{% endif %}</li>
+    {% set bad = (i == 1 and st == 'submission_uncertain') or (i == 2 and st == 'rejected') %}
+    <li class="{{ 'bad' if bad else ('done' if i < stage else ('current' if i == stage else '')) }}"{% if i == stage %} aria-current="step"{% endif %}>
+      {{ label }}{% if i == 2 and stage == 2 %} — {{ labels.get(st) }}{% elif bad %} — {{ labels.get(st) }}{% endif %}
+    </li>
   {% endfor %}
 </ol>
+
+{% if appliable %}
+<section class="card apply-panel" aria-labelledby="apply-h">
+  <div class="apply-head">
+    <div>
+      <h2 id="apply-h">{{ 'Did it go through?' if st == 'submission_uncertain' else 'Apply on the employer’s site' }}</h2>
+      <p class="muted mb0">{% if st == 'submission_uncertain' %}Check your email or the employer portal. Do not submit twice.{% elif job and job.status != 'open' %}This job is <strong>{{ job.status }}</strong> at the source. If you applied before it closed, you can still record it.{% else %}Open the form, apply there, then press <strong>I’ve applied</strong>. The Application Companion fills the form for you and pops up on the page.{% endif %}</p>
+    </div>
+  </div>
+  <div class="apply-actions">
+    {% if dest and dest.startswith('https://') and st != 'submission_uncertain' %}
+      <a class="btn btn-primary btn-lg" href="{{ dest }}" target="_blank" rel="noopener noreferrer" data-apply-link>{{ m.ico('external') }} Open application page</a>
+    {% endif %}
+    <form method="post" action="/applications/{{ a.id }}/applied" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="btn btn-success btn-lg" data-loading-text="Saving…">{{ m.ico('check') }} I’ve applied</button>
+      <details class="disclosure applied-extra">
+        <summary>Add a confirmation (optional)</summary>
+        <div class="disclosure-body">
+          <div class="field"><label for="ap-ref">Reference / confirmation number</label><input type="text" id="ap-ref" name="reference_number" maxlength="200"></div>
+          <div class="field"><label for="ap-conf">Confirmation message or email text</label><textarea id="ap-conf" name="confirmation_text" rows="3" maxlength="4000"></textarea></div>
+        </div>
+      </details>
+    </form>
+  </div>
+  {% if st in ['application_started', 'submission_uncertain'] %}
+  <details class="disclosure mt">
+    <summary>It failed, or you’re not sure</summary>
+    <div class="disclosure-body">
+      <form method="post" action="/applications/{{ a.id }}/outcome" enctype="multipart/form-data" class="stack-sm">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="check"><input type="radio" name="outcome" value="failed" required> It failed</label>
+        <label class="check"><input type="radio" name="outcome" value="uncertain"> Not sure yet</label>
+        <div class="field"><label for="stage">If it failed: when?</label>
+          <select id="stage" name="failure_stage"><option value="">—</option><option value="before_submit">Before I pressed submit</option><option value="after_submit_unknown">After pressing submit (result unknown)</option></select></div>
+        <div class="field"><label for="reason">Notes</label><input type="text" id="reason" name="reason" maxlength="500"></div>
+        <button type="submit" class="btn btn-sm">Save</button>
+      </form>
+    </div>
+  </details>
+  {% endif %}
+</section>
+{% endif %}
 {% if st in ['withdrawn', 'closed'] %}<div class="alert alert-info">This application is <strong>{{ labels.get(st) }}</strong>.</div>{% endif %}
 
 {# ---------------------------------------------------------------- what will be sent #}
@@ -157,7 +203,8 @@
 
 {# ---------------------------------------------------------------- approval #}
 {% if st == 'awaiting_approval' %}
-<section class="card trust-panel" aria-labelledby="approve-h">
+<details class="card trust-panel autoapply-box">
+  <summary><strong>Let auto-apply submit it for me</strong> <span class="muted small">optional: approve exactly what will be sent</span></summary>
   <div class="trust-head">
     <span class="trust-icon" aria-hidden="true"><svg><use href="/static/icons.svg#shield-check"></use></svg></span>
     <div><h2 id="approve-h">Approve this application</h2><p class="small muted mb0">Your explicit approval is required, and it is bound to exactly what you see above.</p></div>
@@ -184,83 +231,21 @@
       <button type="submit" class="btn btn-primary btn-lg btn-cta" data-loading-text="Recording approval…"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg> Approve this application</button>
     </form>
   {% endif %}
-</section>
+</details>
 {% endif %}
 
 {% if st == 'ready_to_apply' %}
 <section class="card trust-panel" aria-labelledby="ready-h">
-  <h2 id="ready-h">Approved — ready to apply</h2>
-  {% if approval %}<p>Approval expires <strong>{{ m.dt(approval.expires_at) }}</strong> (UTC). Fingerprint <span class="fp">{{ approval.fingerprint[:12] }}</span>.</p>{% endif %}
-  <div class="actions">
-    <form method="post" action="/applications/{{ a.id }}/start" class="inline" data-overlay="start">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button type="submit" class="btn btn-primary btn-lg btn-cta" data-loading-text="Starting…"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#send"></use></svg> Start application (opens checklist)</button>
-    </form>
-    <form method="post" action="/applications/{{ a.id }}/revoke" class="inline" data-confirm="Revoke this approval? You will need to review and approve again.">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button type="submit" class="btn btn-danger">Revoke approval</button>
-    </form>
-  </div>
-</section>
-{% endif %}
-
-{% if st in ['application_started', 'submission_uncertain'] %}
-<section class="card" aria-labelledby="submit-h">
-  <h2 id="submit-h">Submit on the employer’s site</h2>
-  {% if st == 'submission_uncertain' %}<div class="alert alert-warn">The outcome is uncertain. Check your email or the employer portal, then record the final outcome. Do not submit twice.</div>{% endif %}
-  {% if dest and dest.startswith('https://') %}
-    <p><a class="btn btn-primary btn-lg" href="{{ dest }}" target="_blank" rel="noopener noreferrer">Open official application page ↗</a></p>
-  {% endif %}
-  <ol class="checklist">
-    <li>Upload the resume PDF{% if resume %} (<a href="/studio/{{ resume.id }}/download.pdf">download it here</a>){% endif %}.</li>
-    <li>Paste the cover letter{% if cover %} <button type="button" class="btn btn-sm" data-copy-target="#cover-text" hidden>Copy letter</button>{% endif %}.</li>
-    <li>Copy each screening answer from the table above (use the Copy buttons).</li>
-    <li>Submit, then save the confirmation number, email text or a screenshot.</li>
-  </ol>
-
-  <h3 class="mt">Record the outcome</h3>
-  <p class="small">Submitted requires evidence (reference number, confirmation text, or screenshot).</p>
-  <form method="post" action="/applications/{{ a.id }}/outcome" enctype="multipart/form-data">
+  <h2 id="ready-h">Approved for auto-apply</h2>
+  <p class="mb0">Auto-apply submits it on its next run{% if approval %} (approval valid until {{ m.dt(approval.expires_at) }}){% endif %}. Applying yourself instead? Use <strong>I’ve applied</strong> above and the approval is cancelled.</p>
+  <form method="post" action="/applications/{{ a.id }}/revoke" class="inline mt" data-confirm="Revoke this approval?">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <fieldset><legend>What happened?</legend>
-      <div class="radio-cards">
-        <label class="check"><input type="radio" name="outcome" value="submitted" required> Submitted successfully</label>
-        <label class="check"><input type="radio" name="outcome" value="failed"> It failed</label>
-        <label class="check"><input type="radio" name="outcome" value="uncertain"> Not sure</label>
-      </div>
-    </fieldset>
-    <div class="form-grid">
-      <div class="field">
-        <label for="ref">Reference / confirmation number</label>
-        <input type="text" id="ref" name="reference_number" maxlength="200">
-      </div>
-      <div class="field">
-        <label for="shot">Screenshot or PDF of confirmation <span class="hint">(PNG, JPEG or PDF, max 5 MB)</span></label>
-        <input type="file" id="shot" name="screenshot" accept=".png,.jpg,.jpeg,.pdf">
-      </div>
-    </div>
-    <div class="field">
-      <label for="conf">Confirmation text <span class="hint">(paste the on-screen message or email)</span></label>
-      <textarea id="conf" name="confirmation_text" maxlength="4000"></textarea>
-    </div>
-    <div class="form-grid">
-      <div class="field">
-        <label for="stage">If it failed: when?</label>
-        <select id="stage" name="failure_stage">
-          <option value="">—</option>
-          <option value="before_submit">Before I pressed submit</option>
-          <option value="after_submit_unknown">After pressing submit (result unknown)</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="reason">Reason / notes</label>
-        <input type="text" id="reason" name="reason" maxlength="500">
-      </div>
-    </div>
-    <button type="submit" class="btn btn-primary">Record outcome</button>
+    <button type="submit" class="btn btn-sm">Revoke approval</button>
   </form>
 </section>
 {% endif %}
+
+
 
 {% if st == 'submission_failed' %}
 <section class="card" aria-labelledby="fail-h">

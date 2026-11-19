@@ -46,6 +46,19 @@
         {% if sgt.levels %}<p class="small muted mb0">Levels: {% for l, n in sgt.levels %}{{ l }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
         {% if sgt.countries %}<p class="small muted mb0">Targets: {% for c, n in sgt.countries %}{{ c }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
         {% if sgt.actions %}<ul class="seg-actions">{% for a in sgt.actions %}<li>{{ a }}</li>{% endfor %}</ul>{% endif %}
+        <details class="disclosure">
+          <summary>Screens for {{ sgt.label }} users…</summary>
+          <div class="disclosure-body">
+            <form method="post" action="/admin/segments/{{ sgt.id }}/screens" class="stack-sm">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <div class="screen-grid">
+                {% for path, label in screens %}<label class="check"><input type="checkbox" name="screen" value="{{ path }}"{% if path not in segment_rules[sgt.id] %} checked{% endif %}> {{ label }}</label>{% endfor %}
+              </div>
+              <p class="small muted mb0">Applies to everyone targeting this industry, except users you gave custom screens.</p>
+              <button type="submit" class="btn btn-sm btn-primary">Save for this industry</button>
+            </form>
+          </div>
+        </details>
       </article>
     {% endfor %}
   </div>
@@ -56,6 +69,21 @@
   {% else %}
     <div class="card empty"><strong>No preferences yet</strong>Segments appear once users answer the onboarding questions (new sign-ups do this at their first sign-in).</div>
   {% endif %}
+  <details class="card mt matrix-box">
+    <summary><strong>Who sees what</strong> <span class="small muted">screens each approved user can open</span></summary>
+    <div class="table-wrap mt">
+      <table class="matrix">
+        <caption class="visually-hidden">Screens each user can open</caption>
+        <thead><tr><th scope="col">User</th><th scope="col">Rule</th>{% for path, label in screens %}<th scope="col" class="center">{{ label }}</th>{% endfor %}</tr></thead>
+        <tbody>
+        {% for r in matrix %}
+          <tr><td class="nowrap">{{ r.name }}</td><td><span class="small muted">{{ {'admin': 'Administrator', 'custom': 'Custom', 'industry': 'By industry', 'automatic': 'Automatic'}[r.source] }}</span></td>
+            {% for path, label in screens %}<td class="center">{% if path in r.visible %}<span class="yes" aria-label="visible">✓</span>{% else %}<span class="no" aria-label="hidden">—</span>{% endif %}</td>{% endfor %}</tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
   {% if aud.unset %}<p class="small muted mt">{{ aud.unset }} approved account{{ 's' if aud.unset != 1 }} never set preferences (created before onboarding existed); they are classified from their preferred roles and marked <em>Inferred</em>. <a href="/admin/users?segment=unset#all-users">Show them</a>.</p>{% endif %}
 </section>
 
@@ -98,6 +126,17 @@
 </section>
 
 <section class="card section" id="all-users" aria-labelledby="h-users">
+  <div class="bulk-row">
+    <span class="small muted">AI for everyone:</span>
+    <form method="post" action="/admin/ai/bulk" class="inline" data-confirm="Give every approved user full AI access (no monthly limit)?">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="grant" value="1">
+      <button type="submit" class="btn btn-sm">{{ m.ico('sparkle') }} Grant full AI to all</button>
+    </form>
+    <form method="post" action="/admin/ai/bulk" class="inline" data-confirm="Remove AI access from every user (except you)?">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="grant" value="0">
+      <button type="submit" class="btn btn-sm">Remove AI from all</button>
+    </form>
+  </div>
   <div class="card-title">
     <h2 id="h-users">All accounts{% if segment %} · {{ segment_label }}{% endif %}</h2>
     <form method="get" action="/admin/users#all-users" class="row">
@@ -115,7 +154,7 @@
       <caption class="visually-hidden">All accounts</caption>
       <thead><tr>
         <th scope="col">Name</th><th scope="col">Looking for</th><th scope="col">Email</th><th scope="col">Username</th><th scope="col">Role</th>
-        <th scope="col">Status</th><th scope="col">AI access</th><th scope="col">Created</th><th scope="col">Last sign-in</th>
+        <th scope="col">Status</th><th scope="col">AI access</th><th scope="col">Screens</th><th scope="col">Created</th><th scope="col">Last sign-in</th>
         <th scope="col" class="num">Apps / CVs</th><th scope="col">Actions</th>
       </tr></thead>
       <tbody>
@@ -139,7 +178,7 @@
               <span class="badge b-purple">Always</span>
             {% elif u.ai_access %}
               <span class="badge b-green">{{ m.ico('sparkle') }} On</span>
-              <div class="small muted nowrap">${{ '%.2f'|format(u.ai_month_usd or 0) }}{% if u.ai_monthly_limit_usd is not none %} / ${{ '%.2f'|format(u.ai_monthly_limit_usd) }}{% endif %}</div>
+              <div class="small muted nowrap">${{ '%.2f'|format(u.ai_month_usd or 0) }}{% if u.ai_monthly_limit_usd is not none %} / ${{ '%.2f'|format(u.ai_monthly_limit_usd) }}{% else %} · no limit{% endif %}</div>
               <form method="post" action="/admin/users/{{ u.id }}/ai-access" class="inline">
                 <input type="hidden" name="csrf" value="{{ csrf }}">
                 <input type="hidden" name="grant" value="0">
@@ -152,15 +191,40 @@
                   <form method="post" action="/admin/users/{{ u.id }}/ai-access">
                     <input type="hidden" name="csrf" value="{{ csrf }}">
                     <input type="hidden" name="grant" value="1">
+                    <label class="check"><input type="radio" name="ai_mode" value="full" checked> Full access (no limit)</label>
+                    <label class="check"><input type="radio" name="ai_mode" value="limit"> Monthly limit</label>
                     <div class="field">
-                      <label for="lim-{{ u.id }}">Monthly allowance (USD) <span class="hint">(blank = no personal cap)</span></label>
-                      <input type="number" id="lim-{{ u.id }}" name="monthly_limit_usd" min="0" max="1000" step="0.01" placeholder="e.g. 2.00">
+                      <label for="lim-{{ u.id }}" class="visually-hidden">Monthly limit (USD)</label>
+                      <input type="number" id="lim-{{ u.id }}" name="monthly_limit_usd" min="0" max="1000" step="0.01" placeholder="USD per month, e.g. 2.00">
                     </div>
                     <button type="submit" class="btn btn-sm btn-primary">Grant AI access</button>
                   </form>
                 </div>
               </details>
             {% else %}<span class="badge b-grey">Off</span>{% endif %}
+          </td>
+          <td class="screens-cell">
+            {% set ac = u.access %}
+            {% if u.role == 'admin' %}<span class="badge b-purple">All</span>
+            {% else %}
+              <span class="badge {{ 'b-blue' if ac.source == 'custom' else 'b-grey' }}">{{ {'custom': 'Custom', 'industry': 'By industry', 'automatic': 'Automatic'}[ac.source] }}</span>
+              <div class="small muted">{% if ac.hidden %}Hidden: {{ ac.hidden|map('screen_label')|join(', ') }}{% else %}All screens{% endif %}</div>
+              <details class="disclosure">
+                <summary>Edit…</summary>
+                <div class="disclosure-body">
+                  <form method="post" action="/admin/users/{{ u.id }}/screens" class="stack-sm">
+                    <input type="hidden" name="csrf" value="{{ csrf }}">
+                    <label class="check"><input type="radio" name="mode" value="auto"{% if ac.source != 'custom' %} checked{% endif %}> Automatic (by their industries)</label>
+                    <label class="check"><input type="radio" name="mode" value="custom"{% if ac.source == 'custom' %} checked{% endif %}> Custom: only the ticked screens</label>
+                    <div class="screen-grid">
+                      {% for path, label in screens %}<label class="check"><input type="checkbox" name="screen" value="{{ path }}"{% if path not in ac.hidden %} checked{% endif %}> {{ label }}</label>{% endfor %}
+                    </div>
+                    <p class="small muted mb0">Overview, Jobs, Applications, Job preferences, Settings and Help are always on.</p>
+                    <button type="submit" class="btn btn-sm btn-primary">Save screens</button>
+                  </form>
+                </div>
+              </details>
+            {% endif %}
           </td>
           <td class="nowrap">{{ m.d(u.created_at) }}</td>
           <td class="nowrap">{{ m.dt(u.last_login_at) }}</td>

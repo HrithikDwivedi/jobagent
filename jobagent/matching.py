@@ -103,6 +103,15 @@ def _skill_credit(skill: str, profile: dict) -> tuple[float, str]:
     return 0.0, "not established by your resume"
 
 
+def _converted_max(job: dict, settings: dict):
+    """The job's top salary in the user's currency (None if it cannot be converted)."""
+    from . import fx
+    if job.get("salary_currency") == settings.get("currency"):
+        return job.get("salary_max")
+    return fx.convert(job["salary_max"], (job.get("salary_currency") or "").upper(), settings.get("currency") or "",
+                      settings.get("_fx"))
+
+
 LEVEL_YEARS = {"student": 0, "entry": 1, "mid": 3, "senior": 7, "manager": 8, "executive": 12}
 
 
@@ -309,12 +318,14 @@ def score_job(job: dict, analysis: dict, sponsorship: dict, profile: dict, setti
     if job.get("salary_max") and job.get("salary_currency"):
         if not min_salary:
             comp = 0.7
-        elif job.get("salary_currency") != settings.get("currency"):
+        elif job.get("salary_currency") != settings.get("currency") and _converted_max(job, settings) is None:
             comp = 0.5
             notes.append(f"Salary is in {job['salary_currency']}; not compared with your {settings.get('currency')} minimum.")
-        elif (job.get("salary_period") or "year") == "year" and job["salary_max"] < min_salary:
+        elif (job.get("salary_period") or "year") == "year" and (_converted_max(job, settings) or 0) < min_salary:
             comp = 0.1
-            gaps.append(f"Salary range tops out below your minimum ({min_salary:,} {settings.get('currency')}).")
+            gaps.append(f"Salary range tops out below your minimum ({min_salary:,} {settings.get('currency')})"
+                        + (f"; about {int(_converted_max(job, settings) or 0):,} {settings.get('currency')} at today's"
+                           f" exchange rate." if job.get("salary_currency") != settings.get("currency") else "."))
         else:
             comp = 1.0
     else:
