@@ -22,6 +22,23 @@
   <div class="alert alert-info" role="note"><strong>Demo/sample data present — excluded from statistics.</strong> Sample jobs are hidden from search and counts.</div>
 {% endif %}
 {% if pending_signups %}<div class="alert alert-info" role="status"><strong>{{ pending_signups }} sign-up request{{ "s" if pending_signups != 1 }} waiting.</strong> <a href="/admin/users">Review them</a></div>{% endif %}
+{% if recent_errors %}
+<section class="card errors-card" aria-labelledby="err-h">
+  <div class="card-title"><h2 id="err-h">{{ m.ico('alert') }} Recent errors</h2><a class="small" href="/audit?entity=error">All errors</a></div>
+  <p class="small muted">When a user sees “Something went wrong (reference …)”, find that reference here.</p>
+  <ul class="err-list">
+    {% for e in recent_errors %}
+      <li>
+        <details class="disclosure">
+          <summary><code>{{ e.ref }}</code> · {{ m.dt(e.at) }} · {{ e.detail.method }} {{ e.detail.path }}{% if e.detail.user %} · {{ e.detail.user }}{% endif %}
+            <div class="small muted wrap-long">{{ e.detail.error }}</div></summary>
+          <pre class="err-trace">{{ e.detail.trace_tail }}</pre>
+        </details>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
 {% for p in config_problems %}
   {% if loop.first %}<div class="alert alert-warn" role="alert"><strong>Configuration needs attention</strong><ul>{% endif %}
   <li>{{ p }}</li>
@@ -110,4 +127,5 @@
   <section class="card"><h3>Open jobs by sponsorship evidence</h3>{{ chart_sponsorship|safe }}</section>
   <section class="card"><h3>Application outcomes</h3>{{ chart_outcomes|safe }}</section>
 </div>
+{% include "_profile_prompt.html" %}
 {% endblock %}

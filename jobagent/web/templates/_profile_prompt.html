@@ -1,0 +1,45 @@
+{# Small pop-up: application details the resume did not contain (asked once a resume is uploaded). #}
+{% if profile_prompt %}
+<aside class="profile-prompt" id="profile-prompt" role="dialog" aria-labelledby="pp-h" aria-describedby="pp-d" data-profile-prompt>
+  <div class="pp-head">
+    <h2 id="pp-h">{{ m.ico('bolt') }} Finish your application details</h2>
+    <form method="post" action="/profile/later">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="icon-btn pp-close" aria-label="Remind me later">{{ m.ico('close') }}</button>
+    </form>
+  </div>
+  <p id="pp-d" class="small muted">We filled what your resume had. Forms also ask for {{ profile_prompt.fields|length }} more
+    thing{{ '' if profile_prompt.fields|length == 1 else 's' }}; add {{ 'it' if profile_prompt.fields|length == 1 else 'them' }} once and every application uses {{ 'it' if profile_prompt.fields|length == 1 else 'them' }}.</p>
+  <form method="post" action="/profile/quick" class="stack-sm">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% for f in profile_prompt.fields %}
+      {% if f.type == 'salary' %}
+        <div class="field mb0">
+          <label for="pp-amount">{{ f.label }}</label>
+          <div class="pp-salary">
+            <input type="text" id="pp-amount" name="expected_amount" inputmode="decimal" placeholder="e.g. 6,00,000" autocomplete="off">
+            <label for="pp-cur" class="visually-hidden">Currency</label>
+            <select id="pp-cur" name="expected_currency">
+              {% for code in profile_prompt.currencies %}<option value="{{ code }}"{% if code == profile_prompt.currency %} selected{% endif %}>{{ code }}</option>{% endfor %}
+            </select>
+            <label for="pp-per" class="visually-hidden">Per</label>
+            <select id="pp-per" name="expected_period">
+              <option value="year" selected>per year</option><option value="month">per month</option>
+            </select>
+          </div>
+        </div>
+      {% else %}
+        <div class="field mb0">
+          <label for="pp-{{ f.key }}">{{ f.label }}</label>
+          <input type="{{ f.type }}" id="pp-{{ f.key }}" name="{{ f.key }}" placeholder="{{ f.hint }}"
+                 {% if f.key == 'full_name' %}autocomplete="name"{% elif f.key == 'email' %}autocomplete="email"{% elif f.key == 'phone' %}autocomplete="tel"{% else %}autocomplete="off"{% endif %} maxlength="120">
+        </div>
+      {% endif %}
+    {% endfor %}
+    <div class="row between pp-actions">
+      <a class="small" href="/settings#candidate">All details in Settings</a>
+      <button type="submit" class="btn btn-primary btn-sm">Save</button>
+    </div>
+  </form>
+</aside>
+{% endif %}

@@ -49,6 +49,12 @@ NO = {"no", "n", "false"}
 RULES: list[tuple[str, re.Pattern]] = [(k, re.compile(p)) for k, p in [
     ("skip_if_different", r"\bif different\b|\bif applicable\b.*\bname\b|\bmaiden name\b|\bformer name\b"),
     ("preferred_name", r"\bpreferred (first )?name\b|\bname you( would|d)? prefer\b|\bnickname\b"),
+    # the whole name asked in other words: "What is your name?", "First and last name", "Applicant name"
+    ("full_name", r"\b(first|given) (and|&) (last|family|sur) ?names?\b|\bname and surname\b|"
+                  r"\b(what is|whats|please (provide|enter|state|give|type)|enter|provide|state|give us|tell us) "
+                  r"(your |the applicant s |the candidate s )?(full |legal |complete )?name\b|"
+                  r"\b(applicant|candidate)s? (full |legal )?name\b|^your (full |legal )?name\b|"
+                  r"^name of (the )?(applicant|candidate)\b"),
     ("first_name", r"\b(first|given|fore) ?name\b"),
     ("middle_name", r"\bmiddle name\b"),
     ("last_name", r"\b(last|family|sur) ?name\b"),
@@ -242,7 +248,7 @@ class Decision:
 class Matcher:
     def __init__(self, candidate: dict, job: dict, answers: list[dict] | None = None,
                  resume_structured: dict | None = None, policy: dict | None = None, cover_letter: str | None = None):
-        self.c = candidate or {}
+        self.c = self._with_resume_contact(dict(candidate or {}), resume_structured or {})
         self.job = job or {}
         self.answers = [a for a in (answers or []) if a.get("question") and a.get("answer")]
         self.resume = resume_structured or {}
@@ -250,6 +256,16 @@ class Matcher:
         self.cover = (cover_letter or "").strip()
 
     # ------------------------------------------------------------------ facts
+    @staticmethod
+    def _with_resume_contact(c: dict, resume: dict) -> dict:
+        """Contact details missing from Settings are taken from the user's own resume (name, email, phone,
+        LinkedIn, GitHub, location). Settings always win; nothing is guessed."""
+        from ..profile import from_resume
+        for k, v in from_resume(resume).items():
+            if not c.get(k):
+                c[k] = v
+        return c
+
     def _names(self) -> tuple[str | None, str | None, str | None]:
         parts = (self.c.get("full_name") or "").split()
         if not parts:

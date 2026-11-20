@@ -34,6 +34,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 from .. import agent as agent_mod
 from .. import access
 from .. import careerkit
+from .. import profile as profile_mod
 from .. import answers as answers_mod
 from .. import audience
 from .. import companion
@@ -287,8 +288,10 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         try:
             db = Database(cfg.database_url)
             try:
+                sess = getattr(request.state, "session", None) or {}
                 audit(db, actor="system", entity="error", entity_id=ref, action="unhandled_exception",
                       detail={"method": request.method, "path": request.url.path,
+                              "user": sess.get("username"),
                               "error": f"{type(exc).__name__}: {str(exc)[:300]}", "trace_tail": tb[-1500:]})
             finally:
                 db.close()
@@ -505,6 +508,27 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
                                user_id=uid(request))
         return redirect(safe_next(request.query_params.get("next") or "/"), None, None)
 
+    @app.post("/profile/quick")
+    async def profile_quick(request: Request):
+        """The home pop-up: save the application details the resume did not contain."""
+        data = await form(request)
+        db = get_db(request)
+        try:
+            saved = profile_mod.save_quick(db, uid(request), data, actor(request))
+        except settings_mod.SettingsError as e:
+            return redirect("/#profile-prompt", "error", str(e))
+        if not saved:
+            return redirect("/", "error", "Fill in at least one detail, or press Later.")
+        left = profile_mod.missing(db, uid(request))
+        return redirect("/", "ok", "Saved. " + ("Auto-apply now has everything it needs." if not left else
+                                                f"{len(left)} more to go when you're ready."))
+
+    @app.post("/profile/later")
+    async def profile_later(request: Request):
+        await form(request)
+        profile_mod.snooze(get_db(request), uid(request), actor(request))
+        return redirect("/", None, None)
+
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request):
         db = get_db(request)
@@ -523,6 +547,8 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
                 "courses": careerkit.courses_for(career, limit=4),
                 "resume": resume_store.canonical(db, user_id=me) is not None,
                 "whats_new": WHATS_NEW if us.get("whats_new_seen") != WHATS_NEW["version"] else None,
+                "profile_prompt": profile_mod.prompt(db, me, settings=us) if resume_store.canonical(
+                    db, user_id=me) is not None else None,
                 "target_names": [settings_mod.COUNTRY_NAMES.get(c, c) for c in settings_mod.all_target_countries(us)][:4],
             })
         o = queries.overview(db, user_id=uid(request))
@@ -537,6 +563,11 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
             "chart_outcomes": charts.hbar(o["chart_outcomes"], "Application outcomes", apps.STATUS_LABELS),
             "resume": resume_store.canonical(db, user_id=uid(request)) is not None,
             "config_problems": validate_config(cfg) if is_admin(request) else [],
+            "recent_errors": [{**r, "detail": loads(r["detail_json"], {})} for r in db.all(
+                "SELECT entity_id AS ref, at, detail_json FROM audit_events WHERE entity='error' "
+                "ORDER BY id DESC LIMIT 5")] if is_admin(request) else [],
+            "profile_prompt": profile_mod.prompt(db, uid(request)) if resume_store.canonical(
+                db, user_id=uid(request)) is not None else None,
             "pending_signups": int(db.scalar("SELECT COUNT(*) FROM users WHERE status='pending'") or 0)
             if is_admin(request) else 0,
         }
@@ -1166,6 +1197,9 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
             return redirect("/studio", "error", e.message)
         msg = "Resume imported." + ("" if v["is_canonical"] else
                                     " It is NOT canonical yet; use 'Make canonical' if it should replace the current one.")
+        if v.get("profile_filled"):
+            msg += (" Your application details were filled from it: "
+                    + ", ".join(profile_mod.FILLED_LABELS.get(k, k) for k in v["profile_filled"]) + ".")
         return redirect(f"/studio?v={v['id']}", "ok", msg)
 
     @app.post("/studio/variant")
@@ -1594,10 +1628,11 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         content = await up.read(resume_store.MAX_UPLOAD_BYTES + 1)
         db = get_db(request)
         try:
-            resume_store.import_bytes(db, content, up.filename, actor=actor(request), user_id=uid(request))
+            v = resume_store.import_bytes(db, content, up.filename, actor=actor(request), user_id=uid(request))
         except ResumeError as e:
             return render(request, "welcome.html", _welcome_ctx(request, 1, e.message), 400)
-        return redirect("/welcome/2", "ok", "Resume uploaded. We used it to suggest industries and roles.")
+        extra = (" Your name and contact details were filled from it." if v.get("profile_filled") else "")
+        return redirect("/welcome/2", "ok", "Resume uploaded. We used it to suggest industries and roles." + extra)
 
     @app.post("/welcome/{step}")
     async def welcome_save(request: Request, step: int):

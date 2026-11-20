@@ -79,7 +79,12 @@ def import_bytes(db: Database, data: bytes, filename: str, actor: str = "system"
              iso(), user_id))
         audit(db, actor=actor, entity="resume", entity_id=rid, action="import_original",
               detail={"file": name, "sha256": sha, "canonical": bool(canonical_flag)})
-    return get(db, rid, user_id=user_id)
+    # the user's empty application details (name, email, phone, location, LinkedIn...) come from the resume
+    from ..profile import fill_from_resume
+    filled = fill_from_resume(db, user_id, structured, actor)
+    out = get(db, rid, user_id=user_id)
+    out["profile_filled"] = filled
+    return out
 
 
 def get(db: Database, rid: int, *, user_id: int) -> dict | None:

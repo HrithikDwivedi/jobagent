@@ -545,7 +545,9 @@ def test_per_user_canonical_resume_and_settings(anydb):
     with pytest.raises(LookupError):
         store.set_canonical(anydb, a["id"], "user:bea", True, user_id=bea)
     assert settings_mod.get(anydb, "candidate", ADMIN)["full_name"] == "Hrithik Rajendra Dwivedi"   # env defaults
-    assert settings_mod.get(anydb, "candidate", bea)["full_name"] is None
+    # B's details come from B's own resume (filled on upload), never from the admin's env defaults
+    assert settings_mod.get(anydb, "candidate", bea)["full_name"] == b["structured"]["name"]
+    assert settings_mod.get(anydb, "candidate", bea)["full_name"] != "Hrithik Rajendra Dwivedi"
     settings_mod.set_value(anydb, "min_match_score", 80, "user:bea", user_id=bea)
     assert settings_mod.get(anydb, "min_match_score", bea) == 80
     assert settings_mod.get(anydb, "min_match_score", ADMIN) == 55

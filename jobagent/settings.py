@@ -119,6 +119,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "segment_screens": {},
     # per user: the "What's new" release the user has dismissed (web/app.py WHATS_NEW["version"])
     "whats_new_seen": "",
+    # per user: the "complete your application details" pop-up is hidden until this time (ISO)
+    "profile_prompt_snooze": "",
     "career": {"industries": [], "roles": [], "custom_roles": [], "experience": None,
                "employment_types": ["full_time"], "onboarded_at": None},
     "resume_style": {
@@ -408,6 +410,11 @@ def validate(key: str, value: Any) -> Any:
                 raise SettingsError(f"Unknown industry {ind!r}.")
             out[ind] = [p for p in dict.fromkeys(paths) if p in SCREEN_PATHS]
         return out
+    if key == "profile_prompt_snooze":
+        v = str(value or "")[:40]
+        if v and not re.match(r"^\d{4}-\d{2}-\d{2}T[0-9:.+-]+$", v):
+            raise SettingsError("Invalid date.")
+        return v
     if key == "whats_new_seen":
         v = str(value or "")[:20]
         if v and not all(ch.isalnum() or ch in "-._" for ch in v):

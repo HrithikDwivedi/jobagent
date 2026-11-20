@@ -82,6 +82,8 @@
 </section>
 {% endif %}
 
+{% if not whats_new %}{% include "_profile_prompt.html" %}{% endif %}
+
 {% if whats_new %}
 <div class="whatsnew-backdrop" data-whatsnew>
   <div class="whatsnew" role="dialog" aria-modal="true" aria-labelledby="wn-h">

@@ -205,6 +205,14 @@ the source's own category) into an industry and role.
   Application Companion is a desktop Chrome/Edge extension (phone browsers don't support extensions); on phones
   the Companion and application pages say so and the flow is Apply → open the employer's form → **I've applied**.
 
+* **Application details from the resume** (`jobagent/profile.py`): uploading a resume fills the user's empty
+  candidate facts (name, email, phone, location, LinkedIn, GitHub); their own entries are never overwritten. What
+  forms commonly need but the resume lacks (e.g. notice period, expected salary) is asked in a small pop-up on the
+  Overview ("Later" hides it for 3 days). Auto-apply and the Companion also fall back to the resume's contact
+  details, and recognise every common way of asking for the name ("What is your name?", "First and last name"...).
+* **Errors:** an unhandled error shows the user a reference; the administrator's Overview lists recent errors (with
+  user, page, message and traceback), and the Audit Log keeps all of them.
+
 ### Closed jobs are removed
 
 * A posting that says it is no longer accepting applications (or whose closing date has passed) is never stored,
