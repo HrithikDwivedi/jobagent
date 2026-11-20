@@ -238,6 +238,10 @@ INDUSTRIES: tuple[Industry, ...] = (
     ), jobicy=("project-management", "management"), hints=("consulting", "strategy", "project", "management")),
 )
 
+# Bump whenever industries, roles or their patterns change: stored jobs are then re-classified automatically
+# (ingest.reclassify_if_changed), e.g. jobs saved before an industry existed stop counting as "unknown industry".
+VERSION = "2026-11-20.fashion"
+
 BY_ID = {i.id: i for i in INDUSTRIES}
 ROLES = {r.id: (ind.id, r) for ind in INDUSTRIES for r in ind.roles}
 _COMPILED = [(ind.id, r.id, re.compile(r.pattern)) for ind in INDUSTRIES for r in ind.roles]
@@ -409,14 +413,15 @@ def persona(career: dict | None, *, resume_industry: str | None = None, needs_sp
     return {"label": " · ".join(parts), "industry": primary_ind, "tags": tags, "level": level}
 
 
-def job_scope_sql(career: dict | None, alias: str = "j") -> tuple[str, list]:
+def job_scope_sql(career: dict | None, alias: str = "j", *, strict: bool = False) -> tuple[str, list]:
     """SQL (" AND ...") limiting jobs to the user's industries/roles (jobs not yet classified always count).
     Users without a career profile keep the original software-engineering scope."""
     if not has_career(career):
         return (f" AND ({alias}.industry IS NULL OR {alias}.industry='technology' OR {alias}.role_key='presales')", [])
     inds = list((career or {}).get("industries") or [])
     roles = list((career or {}).get("roles") or [])
-    conds = [f"{alias}.industry IS NULL"]
+    # unclassified jobs count for browsing (so nothing is missed), never for recommendations (strict)
+    conds = [] if strict else [f"{alias}.industry IS NULL"]
     params: list = []
     if inds:
         conds.append(f"{alias}.industry IN ({','.join('?' * len(inds))})")

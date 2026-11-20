@@ -49,7 +49,7 @@ from ..ai import AIService, ai_access, make_provider
 from ..config import AppConfig, acceptable_base_url, load_config, validate_config
 from ..db import Database, DatabaseError, audit, dumps, iso, loads, verify_audit_chain
 from ..http import HttpClient
-from ..ingest import classify_pending
+from ..ingest import classify_pending, reclassify_if_changed
 from ..mailer import Mailer, Message, make_mailer
 from ..mailer import valid_email as mailer_valid_email
 from ..resume import store as resume_store
@@ -112,6 +112,7 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
                     db.migrate()
                     try:
                         classify_pending(db)
+                        reclassify_if_changed(db)
                     except Exception:  # best-effort; jobs are classified again by the next agent run
                         pass
                     state["migrated"] = True
@@ -541,7 +542,8 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
             u = db.one("SELECT username, full_name FROM users WHERE id=?", (me,)) or {}
             first = ((u.get("full_name") or "").split() or [u.get("username") or ""])[0]
             return render(request, "home.html", {
-                "h": queries.home(db, user_id=me, career=career),
+                "h": queries.home(db, user_id=me, career=career,
+                                  countries=settings_mod.all_target_countries(us)),
                 "first_name": first[:1].upper() + first[1:] if first else "",
                 "career": career, "career_set": taxonomy.has_career(career),
                 "courses": careerkit.courses_for(career, limit=4),

@@ -5,7 +5,7 @@ import re
 from datetime import timedelta
 
 from . import jd
-from .db import Database, dumps, iso, parse_iso, utcnow
+from .db import Database, dumps, iso, loads, parse_iso, utcnow
 from .matching import ENGINEERING, NON_ENGINEERING, NON_SOFTWARE_ENGINEERING
 from .normalize import (canonical_url, description_hash, job_identity, normalize_employer, normalize_title,
                         parse_location, seniority)
@@ -277,6 +277,49 @@ def is_stale(job: dict, max_age_hours: int) -> bool:
     v = parse_iso(job.get("last_verified_at"))
     return v is None or utcnow() - v > timedelta(hours=max_age_hours)
 
+
+
+TAXONOMY_KEY = "_taxonomy_version"
+
+
+def reclassify_if_changed(db: Database, batch: int = 2000) -> int:
+    """After the industry/role list changes, re-classify every stored job by its title (regex; seconds even for
+    tens of thousands of jobs). A title that now matches a role gets that role; a job whose title matches no role
+    keeps the industry it got from its source's category. Returns the number of jobs changed."""
+    row = db.one("SELECT value_json FROM settings WHERE key=?", (TAXONOMY_KEY,))
+    if row and loads(row["value_json"]) == taxonomy.VERSION:
+        return 0
+    changed, last = 0, 0
+    now = iso()
+    while True:
+        rows = db.all("SELECT id, title, industry, role_key FROM jobs WHERE id > ? ORDER BY id LIMIT ?",
+                      (last, batch))
+        if not rows:
+            break
+        groups: dict[tuple, list[int]] = {}
+        for r in rows:
+            ind, role = taxonomy.classify(r["title"])
+            if not role:
+                if r["role_key"] and r["role_key"] not in taxonomy.ROLES:
+                    role = None                                  # a role that no longer exists
+                elif r["role_key"] or not ind:
+                    continue                                     # keep: no better answer from the title alone
+            if (ind, role) != (r["industry"], r["role_key"]):
+                groups.setdefault((ind, role), []).append(r["id"])
+        # one UPDATE per (industry, role): few round trips even on a remote database
+        with db.transaction():
+            for (ind, role), ids in groups.items():
+                for i in range(0, len(ids), 500):
+                    chunk = ids[i:i + 500]
+                    db.run(f"UPDATE jobs SET industry=?, role_key=?, classified_at=? WHERE id IN "
+                           f"({','.join('?' * len(chunk))})", (ind, role, now, *chunk))
+                    changed += len(chunk)
+        last = rows[-1]["id"]
+    with db.transaction():
+        db.run("INSERT INTO settings(key, value_json, updated_at) VALUES (?,?,?) ON CONFLICT(key) "
+               "DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at",
+               (TAXONOMY_KEY, dumps(taxonomy.VERSION), now))
+    return changed
 
 
 def classify_pending(db: Database, limit: int = 3000) -> int:

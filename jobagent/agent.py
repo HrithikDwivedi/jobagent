@@ -20,7 +20,7 @@ from .config import AppConfig, validate_config
 from .db import Database, IntegrityError, LockHeld, audit, dumps, iso, loads, named_lock, utcnow
 from .http import FetchError, HttpClient
 from . import taxonomy
-from .ingest import classify_pending, expire_unseen, mark_closures, posting_closed, purge_closed, upsert_raw
+from .ingest import classify_pending, reclassify_if_changed, expire_unseen, mark_closures, posting_closed, purge_closed, upsert_raw
 from .matching import candidate_profile, score_job
 from .resume import store as resume_store
 from .resume.parser import ResumeError
@@ -255,6 +255,7 @@ def run_agent(db: Database, cfg: AppConfig, *, trigger: str = "manual", http: Ht
         g = settings_mod.personal_discovery_settings(db, personal_for)
     try:
         classify_pending(db)
+        reclassify_if_changed(db)
     except Exception:  # classification is best-effort; never block a run
         pass
     try:

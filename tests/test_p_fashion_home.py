@@ -256,3 +256,53 @@ def test_companion_explains_phones(fashion_site):
     assert w.login("diya", TEST_PASSWORD).status_code == 303
     page = w.client.get("/companion").text
     assert "On a phone or tablet?" in page and "only-touch" in page
+
+
+# =============================================================================== taxonomy changes & strict feed
+
+def test_jobs_saved_before_an_industry_existed_are_reclassified(db):
+    from jobagent import ingest
+    with db.transaction():
+        old = insert_job(db, title="Fashion Stylist", company="Tok-Io", country="IT")
+        vm = insert_job(db, title="Senior Visual Merchandiser", company="Store", country="GB")
+        dev = insert_job(db, title="Software Engineer", company="Acme", country="IE")
+        odd = insert_job(db, title="Associate", company="Bank", country="GB")
+        # as stored by the old taxonomy: unknown industry / retail / technology / industry from the source only
+        db.run("UPDATE jobs SET industry=NULL, role_key=NULL WHERE id=?", (old,))
+        db.run("UPDATE jobs SET industry='hospitality', role_key='retail' WHERE id=?", (vm,))
+        db.run("UPDATE jobs SET industry='technology', role_key='software_engineer' WHERE id=?", (dev,))
+        db.run("UPDATE jobs SET industry='finance', role_key=NULL WHERE id=?", (odd,))
+    assert ingest.reclassify_if_changed(db) == 2
+    got = {r["id"]: (r["industry"], r["role_key"]) for r in db.all("SELECT id, industry, role_key FROM jobs")}
+    assert got[old] == ("fashion", "fashion_stylist")
+    assert got[vm] == ("fashion", "visual_merchandiser")
+    assert got[dev] == ("technology", "software_engineer")
+    assert got[odd] == ("finance", None)                     # kept: the source's category was the only clue
+    assert ingest.reclassify_if_changed(db) == 0              # once per taxonomy version
+
+
+def test_home_recommends_only_the_users_roles_and_countries(tmp_path):
+    w = web_factory(tmp_path)
+    w.setup_user()
+    d = w.db()
+    dev = make_user(d, "dev")
+    settings_mod.set_value(d, "career", {"industries": ["technology"], "roles": ["software_engineer"],
+                                         "experience": "mid"}, "x", user_id=dev)
+    settings_mod.set_value(d, "target_countries", {"tier1": ["IN", "IE"], "tier2": [], "tier3": []}, "x",
+                           user_id=dev)
+    with d.transaction():
+        rows = [("Fashion Stylist", "Tok-Io", "IT", None, None),            # unclassified: never recommended
+                ("Software Engineer", "MITRE", "US", "technology", "software_engineer"),   # not a target country
+                ("Backend Software Engineer", "Infosys", "IN", "technology", "software_engineer"),
+                ("Python Developer", "Stripe", "IE", "technology", "software_engineer")]
+        for title, comp, cc, ind, role in rows:
+            jid = insert_job(d, title=title, company=comp, country=cc, user_id=dev)
+            d.run("UPDATE jobs SET industry=?, role_key=? WHERE id=?", (ind, role, jid))
+    d.close()
+    assert w.login("dev", TEST_PASSWORD).status_code == 303
+    home = w.client.get("/").text
+    rec = home.split("Recommended for your roles")[1].split("Your applications")[0]
+    assert "Backend Software Engineer" in rec and "Python Developer" in rec
+    assert "Fashion Stylist" not in rec and "MITRE" not in rec
+    kpi = home.split("Jobs for you")[1][:200]
+    assert 'data-count="2"' in kpi

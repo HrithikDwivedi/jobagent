@@ -410,10 +410,15 @@ def visible_runs(db: Database, *, user_id: int, is_admin: bool, limit: int = 100
     return db.all("SELECT * FROM runs WHERE user_id=? ORDER BY started_at DESC LIMIT ?", (user_id, limit))
 
 
-def home(db: Database, *, user_id: int, career: dict | None) -> dict:
-    """The personal home screen for a (non-admin) user: activity, jobs recommended for their roles, applications."""
+def home(db: Database, *, user_id: int, career: dict | None, countries: list[str] | None = None) -> dict:
+    """The personal home screen for a (non-admin) user: activity, jobs recommended for their roles, applications.
+    Only jobs classified into the user's industries/roles, in their target countries, count here."""
     from .. import taxonomy
-    scope_sql, scope_params = taxonomy.job_scope_sql(career, "j")
+    scope_sql, scope_params = taxonomy.job_scope_sql(career, "j", strict=True)
+    countries = [c for c in (countries or []) if c]
+    if countries:
+        scope_sql += f" AND (j.country IN ({','.join('?' * len(countries))}) OR j.country IS NULL)"
+        scope_params = [*scope_params, *countries]
     counts = {r["status"]: r["n"] for r in db.all("SELECT status, COUNT(*) AS n FROM applications WHERE is_sample=0 "
                                                   "AND user_id=? GROUP BY status", (user_id,))}
     applied = sum(counts.get(k, 0) for k in ("submitted", "interview", "assessment", "offer", "rejected"))
