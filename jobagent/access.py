@@ -5,8 +5,8 @@ Three layers, most specific wins:
   2. per industry ("Industry"): settings key `segment_screens` = {industry: [screens off]}, applied to everyone who
      targets that industry (a screen is hidden only if it is off for ALL of the user's industries),
   3. automatic defaults: every user sees Overview, Jobs, Top MNCs, Applications, Recruiters, Application Companion,
-     Relocation & Sponsorship, Resume Studio, Skills & Prep, Job preferences, Help & Support and Settings.
-     Screening Answers, Agent Runs and the Audit Log stay administrator-only until the administrator grants them.
+     Relocation & Sponsorship, Screening Answers, Resume Studio, Skills & Prep, Job preferences, Help & Support and
+     Settings. Agent Runs and the Audit Log stay administrator-only until the administrator grants them.
 Hidden screens disappear from the menu AND are refused by the server (the extension API too, for the Companion).
 The administrator always sees everything. Core screens (Overview, Jobs, Applications, Job preferences, Settings,
 Help & Support) can never be turned off."""
@@ -31,7 +31,7 @@ SCREEN_PATHS = tuple(p for p, _ in SCREENS)
 LABELS = dict(SCREENS)
 CORE = ("/", "/jobs", "/applications", "/welcome", "/settings", "/support")
 # off for everyone except the administrator, unless granted per user ("Custom") or per industry
-DEFAULT_HIDDEN = ("/answers", "/runs", "/audit")
+DEFAULT_HIDDEN = ("/runs", "/audit")
 
 
 class AccessError(Exception):

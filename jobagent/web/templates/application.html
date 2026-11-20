@@ -65,7 +65,7 @@
   <div class="apply-head">
     <div>
       <h2 id="apply-h">{{ 'Did it go through?' if st == 'submission_uncertain' else 'Apply on the employer’s site' }}</h2>
-      <p class="muted mb0">{% if st == 'submission_uncertain' %}Check your email or the employer portal. Do not submit twice.{% elif job and job.status != 'open' %}This job is <strong>{{ job.status }}</strong> at the source. If you applied before it closed, you can still record it.{% else %}Open the form, apply there, then press <strong>I’ve applied</strong>. The Application Companion fills the form for you and pops up on the page.{% endif %}</p>
+      <p class="muted mb0">{% if st == 'submission_uncertain' %}Check your email or the employer portal. Do not submit twice.{% elif job and job.status != 'open' %}This job is <strong>{{ job.status }}</strong> at the source. If you applied before it closed, you can still record it.{% else %}Open the form, apply there, then press <strong>I’ve applied</strong>. <span class="no-touch">The Application Companion fills the form for you and pops up on the page.</span><span class="only-touch">On a phone, fill the form yourself (the Companion works on a computer), then come back here.</span>{% endif %}</p>
     </div>
   </div>
   <div class="apply-actions">

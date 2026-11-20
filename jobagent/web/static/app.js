@@ -798,4 +798,13 @@
       });
     }
   });
+
+  // ---------------------------------------------------------------- jobs on phones: bring the opened job into view
+  ready(function () {
+    var open = doc.querySelector(".split.job-open .detail-pane");
+    if (!open || window.getComputedStyle(open).position !== "static") return;    // desktop: side-by-side pane
+    open.scrollIntoView({ block: "start" });
+    var h = open.querySelector("h2");
+    if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); }
+  });
 })();

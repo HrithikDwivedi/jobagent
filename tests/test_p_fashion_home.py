@@ -105,12 +105,12 @@ def test_skill_plan_checks_resume_and_job_gaps(db):
 
 def test_default_screens_for_users(db):
     uid = make_user(db, "dia")
-    assert access.resolve(db, uid) == {"hidden": ["/answers", "/runs", "/audit"], "source": "automatic"}
+    assert access.resolve(db, uid) == {"hidden": ["/runs", "/audit"], "source": "automatic"}
     settings_mod.set_value(db, "career", {"industries": ["fashion"], "roles": ["fashion_stylist"]}, "x", user_id=uid)
     cand = settings_mod.get(db, "candidate", uid)
     settings_mod.set_value(db, "candidate", {**cand, "requires_sponsorship_outside": False}, "x", user_id=uid)
     r = access.resolve(db, uid)
-    assert r["hidden"] == ["/answers", "/runs", "/audit"]      # Top MNCs and Relocation stay visible
+    assert r["hidden"] == ["/runs", "/audit"]                  # Top MNCs, Relocation, Screening Answers visible
     access.set_user(db, uid, "custom", [p for p in access.SCREEN_PATHS if p != "/audit"], "admin")
     assert access.resolve(db, uid)["hidden"] == ["/audit"]     # the administrator can grant extra screens
     assert access.resolve(db, ADMIN)["hidden"] == []
@@ -162,10 +162,11 @@ def test_user_home_is_personal(fashion_site):
     assert "What&#39;s new in JobAgent" in home or "What's new in JobAgent" in home
     assert "Agent runs" not in home and "Jobs tracked" not in home   # the admin dashboard is not shown
     # nav: the user's default screens only
-    for p in ("/jobs", "/mnc", "/applications", "/recruiters", "/companion", "/sponsorship", "/studio", "/prep",
+    for p in ("/jobs", "/mnc", "/applications", "/answers", "/recruiters", "/companion", "/sponsorship", "/studio",
+              "/prep",
               "/welcome", "/support", "/settings"):
         assert f'href="{p}"' in home, p
-    for p in ("/runs", "/answers", "/audit", "/admin/users"):
+    for p in ("/runs", "/audit", "/admin/users"):
         assert f'href="{p}"' not in home, p
     # dismissing "what's new" keeps it away
     r = w.client.post("/whats-new/seen", data={"csrf": extract_csrf(home)}, follow_redirects=False)
@@ -225,3 +226,33 @@ def test_mnc_catalogue_covers_every_industry():
         assert c["careers_url"].startswith("https://") and c.get("industries"), c["key"]
     assert mnc.match_employer("Zara India")["key"] == "inditex"
     assert mnc.match_employer("Apollo Tyres") is None              # no bare "apollo" alias
+
+
+# =============================================================================== phones, tours, Companion
+
+def test_tapped_job_opens_its_details_on_phones(fashion_site):
+    """Phones hide the side-by-side pane; a job opened with ?job= must render as an open details view."""
+    w = fashion_site
+    assert w.login("diya", TEST_PASSWORD).status_code == 303
+    listing = w.client.get("/jobs").text
+    assert 'class="split"' in listing                              # nothing opened yet: list first
+    opened = w.client.get("/jobs", params={"job": w.ids["style"]}).text
+    assert 'class="split job-open"' in opened and "Back to results" in opened
+    assert f'action="/jobs/{w.ids["style"]}/apply"' in opened       # Apply is right there in the details
+
+
+def test_tour_script_is_loaded_for_signed_in_pages(fashion_site, tmp_path):
+    w = fashion_site
+    assert 'src="/static/tour.js"' not in w.client.get("/login").text
+    assert w.login("diya", TEST_PASSWORD).status_code == 303
+    for path in ("/", "/jobs", "/mnc", "/applications", "/answers", "/prep", "/companion", "/support", "/settings"):
+        assert 'src="/static/tour.js"' in w.client.get(path).text, path
+    js = w.client.get("/static/tour.js")
+    assert js.status_code == 200 and "Tour me" in js.text and "data-tour-start" in js.text
+
+
+def test_companion_explains_phones(fashion_site):
+    w = fashion_site
+    assert w.login("diya", TEST_PASSWORD).status_code == 303
+    page = w.client.get("/companion").text
+    assert "On a phone or tablet?" in page and "only-touch" in page

@@ -168,8 +168,8 @@ the source's own category) into an industry and role.
   visa. **Jobs → For you** shows only the user's industries and roles (**All jobs** shows everything, with an
   Industry filter). Users who skipped the resume still get ranked jobs.
 * **Screens:** every user sees Overview, Jobs, Top MNCs, Applications, Recruiters, Application Companion,
-  Relocation & Sponsorship, Resume Studio, Skills & Prep, Job preferences, Help & Support and Settings. Screening
-  Answers, Agent Runs and the Audit Log are administrator-only until the administrator grants them (per user, or
+  Relocation & Sponsorship, Screening Answers, Resume Studio, Skills & Prep, Job preferences, Help & Support and
+  Settings. Agent Runs and the Audit Log are administrator-only until the administrator grants them (per user, or
   per industry, under **Users & audience**).
 * **Home (Overview):** the administrator keeps the dashboard; every other user gets a personal home with a
   greeting, their activity (jobs for them, applied, in progress, interviews, offers), jobs recommended for their
@@ -197,6 +197,13 @@ the source's own category) into an industry and role.
   interested user: low / some / good) with concrete actions when supply is low. A funnel shows accounts → approved →
   preferences set → resume uploaded → applied, and the accounts table can be filtered by segment. Only preferences
   and counts are shown; the onboarding page tells users the administrator can see their industries, roles and level.
+
+* **Tour me:** every signed-in page has a **Tour me** button (`jobagent/web/static/tour.js`) that walks through the
+  page's parts with a highlighted spotlight (keyboard: arrows, Esc). Steps whose element is not on the page are
+  skipped. `scripts/ui_check.py` opens and completes the tour on every page at five widths.
+* **Phones:** tapping a job opens its details (with **Back to results**) and Apply works the same way. The
+  Application Companion is a desktop Chrome/Edge extension (phone browsers don't support extensions); on phones
+  the Companion and application pages say so and the flow is Apply → open the employer's form → **I've applied**.
 
 ### Closed jobs are removed
 

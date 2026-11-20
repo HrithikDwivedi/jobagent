@@ -236,8 +236,9 @@
   <span class="small muted" data-compare-count>Tick 2–4 jobs to compare</span>
   <button type="submit" form="compare-form" class="btn btn-sm" data-compare-button>{{ m.ico('compare') }} Compare selected</button>
 </div>
-<div class="split">
-  <div>
+{# on phones the list and the details can't sit side by side: a tapped job (?job=) opens its details instead #}
+<div class="split{{ ' job-open' if selected and request.query_params.get('job') }}">
+  <div class="results-col">
     <ul class="job-list" aria-label="Job results">
       {% for r in rows %}
         {% set is_sel = selected and selected.id == r.id %}
@@ -285,7 +286,7 @@
 
   <aside class="detail-pane card" aria-label="Selected job">
     {% if selected %}
-      <div class="pane-top"><span class="small muted">Job details</span><a class="small" href="/jobs/{{ selected.id }}">Open in full page</a></div>
+      <div class="pane-top"><a class="small pane-back" href="/jobs{{ ('?' ~ base_qs) if base_qs }}">{{ m.ico('arrow-left') }} Back to results</a><span class="small muted pane-label">Job details</span><a class="small" href="/jobs/{{ selected.id }}">Open in full page</a></div>
       {{ m.job_detail(selected, back, "h2") }}
     {% else %}
       <div class="empty"><strong>Select a job</strong>Choose a job on the left to see the details and match breakdown.</div>

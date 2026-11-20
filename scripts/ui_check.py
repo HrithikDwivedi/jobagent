@@ -55,7 +55,7 @@ JOBS = [
 PAGES = ["/", "/jobs", "/applications", "/mnc", "/sponsorship", "/prep", "/runs", "/audit", "/settings",
          "/recruiters", "/answers", "/logout", "/support", "/support?q=auto+apply+fill+form+manually",
          "/support/1", "/companion", "/admin/users", "/admin/support", "/admin/support/1",
-         "/jobs?view=all", "/applications/1", "/welcome/2", "/welcome/3", "/welcome/5", "/admin/users?segment=healthcare"]
+         "/jobs?view=all", "/applications/1", "/studio", "/jobs/1", "/welcome/2", "/welcome/3", "/welcome/5", "/admin/users?segment=healthcare"]
 NEW_USER = "nina.new"
 FASHION_USER = "diya.fashion"
 USER_PAGES = ["/", "/mnc", "/sponsorship", "/prep", "/jobs", "/applications"]
@@ -177,6 +177,36 @@ def seed(cfg) -> None:
         db.close()
 
 
+NO_TOUR = {"/logout"}
+
+
+def check_tour(page, path: str, label: str, failures: list[str]) -> None:
+    """Open "Tour me", walk every step, and check the card stays on screen and the tour closes cleanly."""
+    if page.query_selector("[data-whatsnew]"):                 # the one-time pop-up comes first
+        page.click("[data-whatsnew-close]")
+        page.wait_for_load_state("networkidle")
+    btn = page.query_selector("[data-tour-start]")
+    if not btn:
+        if path.split("?")[0] not in NO_TOUR:
+            failures.append(f"{label} {path}: no Tour me button")
+        return
+    btn.click()
+    n = int(page.get_attribute("html", "data-tour-steps") or 0)
+    if n < 2:
+        failures.append(f"{label} {path}: tour has only {n} step(s)")
+    for i in range(n):
+        page.wait_for_timeout(30)
+        box = page.eval_on_selector(".tour-pop", "e => { const r = e.getBoundingClientRect(); "
+                                                 "return [r.left, r.top, r.right, r.bottom, "
+                                                 "document.documentElement.clientWidth, innerHeight]; }")
+        l, t, r, b, vw, vh = box
+        if l < -1 or t < -1 or r > vw + 1 or b > vh + 1:
+            failures.append(f"{label} {path}: tour step {i + 1}/{n} card off screen {[round(x) for x in box]}")
+        page.click(".tour-pop .tour-nav .btn-primary")
+    if page.query_selector(".tour-pop") or page.get_attribute("html", "data-tour-done") != "1":
+        failures.append(f"{label} {path}: tour did not close after the last step")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--shots", help="save a screenshot of every page/width into this folder")
@@ -231,6 +261,9 @@ def main() -> int:
                 issues = page.evaluate(LAYOUT_JS) + errors
                 for i in issues:
                     failures.append(f"[{width}px] {path}: {i}")
+                check_tour(page, path, f"[{width}px]", failures)
+                for e in errors:
+                    failures.append(f"[{width}px] {path} (tour): {e}")
                 if shots:
                     name = re.sub(r"[^a-z0-9]+", "_", path.strip("/") or "overview")
                     page.screenshot(path=str(shots / f"{name}_{width}.png"), full_page=False)
@@ -250,6 +283,13 @@ def main() -> int:
                     continue
                 for i in page.evaluate(LAYOUT_JS) + errors:
                     failures.append(f"[{width}px] {path} (user): {i}")
+                if shots:
+                    name = re.sub(r"[^a-z0-9]+", "_", path.strip("/") or "home")
+                    page.screenshot(path=str(shots / f"user_{name}_{width}_pre.png"), full_page=False)
+                errors.clear()
+                check_tour(page, path, f"[{width}px] (user)", failures)
+                for e in errors:
+                    failures.append(f"[{width}px] {path} (user tour): {e}")
                 if shots:
                     name = re.sub(r"[^a-z0-9]+", "_", path.strip("/") or "home")
                     page.screenshot(path=str(shots / f"user_{name}_{width}.png"), full_page=False)

@@ -202,9 +202,9 @@ def test_access_layers(anydb):
     _career(db, dev, ["technology", "healthcare"], ["software_engineer"])
     assert access.resolve(db, ADMIN) == {"hidden": [], "source": "admin"}
     # default for every user: all screens except Screening Answers, Agent Runs and the Audit Log
-    assert access.resolve(db, nurse) == {"hidden": ["/answers", "/runs", "/audit"], "source": "automatic"}
-    assert access.resolve(db, dev)["hidden"] == ["/answers", "/runs", "/audit"]
-    assert access.resolve(db, legacy)["hidden"] == ["/answers", "/runs", "/audit"]
+    assert access.resolve(db, nurse) == {"hidden": ["/runs", "/audit"], "source": "automatic"}
+    assert access.resolve(db, dev)["hidden"] == ["/runs", "/audit"]
+    assert access.resolve(db, legacy)["hidden"] == ["/runs", "/audit"]
     access.set_segment(db, "healthcare", ["/answers", "/companion", "/studio"], "admin")   # visible list
     r = access.resolve(db, nurse)
     assert r["source"] == "industry"

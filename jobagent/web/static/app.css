@@ -1198,3 +1198,48 @@ body.has-modal { overflow: hidden; }
   .whatsnew { animation: wn-in .25s var(--ease) both; }
   @keyframes wn-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
 }
+
+/* ------------------------------------------------------------------ "Tour me" guide */
+.tour-btn { white-space: nowrap; }
+.tour-float { position: fixed; right: 16px; bottom: 16px; z-index: 60; box-shadow: var(--shadow-md); }
+.tour-shade { position: fixed; inset: 0; z-index: 95; background: transparent; }
+.tour-shade.dim { background: var(--overlay); }
+.tour-spot { position: fixed; z-index: 96; pointer-events: none; border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 3px var(--primary), 0 0 0 9999px rgba(8, 15, 30, .55); }
+.tour-pop { position: fixed; z-index: 97; width: min(360px, calc(100vw - 32px)); background: var(--surface-solid);
+  color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-pop);
+  padding: 1rem 1.1rem .9rem; }
+.tour-pop.center { left: 50% !important; top: 50% !important; transform: translate(-50%, -50%); }
+.tour-pop.docked { left: 16px !important; right: 16px; bottom: 16px; top: auto !important; width: auto; }
+.tour-count { margin: 0 0 .2rem; font-size: .75rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--primary); }
+.tour-title { font-size: 1.05rem; margin: 0 0 .35rem; }
+.tour-title:focus { outline: none; }
+.tour-text { margin: 0 0 .9rem; font-size: .92rem; line-height: 1.5; }
+.tour-bar { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.tour-nav { display: flex; gap: .4rem; }
+body.touring { overscroll-behavior: contain; }
+@media (prefers-reduced-motion: no-preference) {
+  .tour-spot { transition: top .25s var(--ease), left .25s var(--ease), width .25s var(--ease), height .25s var(--ease); }
+  .tour-pop { transition: top .25s var(--ease), left .25s var(--ease); }
+}
+@media (forced-colors: active) { .tour-spot { outline: 3px solid Highlight; } }
+
+/* ------------------------------------------------------------------ jobs on phones: tapped job opens its details */
+.pane-back { display: none; align-items: center; gap: .3rem; }
+@media (max-width: 1000px) {
+  .split.job-open > .results-col { display: none; }
+  .split.job-open .detail-pane { display: block; position: static; max-height: none; overflow: visible; }
+  .split.job-open .pane-back { display: inline-flex; }
+  .split.job-open .pane-label { display: none; }
+}
+
+/* touch-only (phones/tablets) vs. mouse notes */
+.only-touch { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .only-touch { display: block; }
+  span.only-touch { display: inline; }
+  .no-touch { display: none; }
+}
+.split.job-open .detail-pane { scroll-margin-top: calc(var(--topbar-h, 56px) + 12px); }
+.detail-pane h2[tabindex="-1"]:focus { outline: none; }
