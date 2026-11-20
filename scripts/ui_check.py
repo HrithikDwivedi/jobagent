@@ -6,6 +6,7 @@ detail pane, and card content spilling outside its card.
 """
 from __future__ import annotations
 
+import os
 import argparse
 import re
 import sys
@@ -30,7 +31,8 @@ from jobagent.resume import store as resume_store  # noqa: E402
 from jobagent.sources import RawJob  # noqa: E402
 from jobagent.web.app import create_app  # noqa: E402
 
-RESUME = Path(r"C:\Users\you\OneDrive\Desktop\hrithik\Hrithik_Dwivedi_Resume_India.pdf")
+RESUME = Path(os.environ.get("JOBAGENT_TEST_RESUME")
+             or Path.home() / "OneDrive" / "Desktop" / "hrithik" / "Hrithik_Dwivedi_Resume_India.pdf")
 USER, PASSWORD = "ui.check", "Ui-Check-Passw0rd!x"
 PORT = 8797
 WIDTHS = [390, 768, 1024, 1280, 1536]

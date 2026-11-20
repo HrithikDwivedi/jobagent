@@ -71,7 +71,7 @@ drafts text or suggests extracted facts, which are kept only if they quote the p
 ## Installation (local)
 
 ```powershell
-cd C:\Users\you\source\repos\JobAgent
+cd JobAgent
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt pytest
 copy .env.example .env          # then edit .env (secret key, resume path, optional AI key)

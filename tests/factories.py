@@ -2,6 +2,7 @@
 real resume path, which is only ever read."""
 from __future__ import annotations
 
+import os
 import io
 import json
 import threading
@@ -13,7 +14,8 @@ from jobagent.config import AppConfig
 from jobagent.db import iso
 from jobagent.sources import RawJob, SourceResult
 
-REAL_RESUME = Path(r"C:\Users\you\OneDrive\Desktop\hrithik\Hrithik_Dwivedi_Resume_India.pdf")
+REAL_RESUME = Path(os.environ.get("JOBAGENT_TEST_RESUME")
+             or Path.home() / "OneDrive" / "Desktop" / "hrithik" / "Hrithik_Dwivedi_Resume_India.pdf")
 
 # ----------------------------------------------------------------------------- resumes (SYNTHETIC)
 

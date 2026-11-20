@@ -5,6 +5,7 @@ fails on template errors, missing pages, or CSP violations (inline styles/script
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 import tempfile
@@ -26,7 +27,8 @@ from jobagent.resume import store as resume_store  # noqa: E402
 from jobagent.sources import RawJob  # noqa: E402
 from jobagent.web.app import create_app  # noqa: E402
 
-RESUME = r"C:\Users\you\OneDrive\Desktop\hrithik\Hrithik_Dwivedi_Resume_India.pdf"
+RESUME = str(Path(os.environ.get("JOBAGENT_TEST_RESUME")
+             or Path.home() / "OneDrive" / "Desktop" / "hrithik" / "Hrithik_Dwivedi_Resume_India.pdf"))
 USER, PASSWORD = "smoketest", "Sm0ke-Test-Passw0rd!"
 USER2 = "smokeuser"
 ADMIN_ID = 1
