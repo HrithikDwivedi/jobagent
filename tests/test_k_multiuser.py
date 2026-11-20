@@ -464,8 +464,9 @@ def test_user_b_cannot_see_or_act_on_user_a_data_via_any_route(tmp_path):
                   f"/studio/{A['variant']}/download.pdf", f"/files/{A['file']}", f"/files/{A['evidence']}",
                   f"/runs/{run.id}"]
     for path in get_routes:
-        r = c.get(path)
-        assert r.status_code in (403, 404), (path, r.status_code)
+        r = c.get(path, follow_redirects=False)
+        # 403/404, or (Agent Runs is an administrator screen for users) a redirect home
+        assert r.status_code in (403, 404) or (r.status_code == 303 and r.headers["location"] == "/"),             (path, r.status_code)
         _assert_clean(r.text, path)
     posts = {
         f"/applications/{A['app']}/approve": {"confirm": "yes", "fingerprint": "x"},

@@ -201,14 +201,15 @@ def test_access_layers(anydb):
     _career(db, nurse, ["healthcare"], ["nurse"], sponsor=False)
     _career(db, dev, ["technology", "healthcare"], ["software_engineer"])
     assert access.resolve(db, ADMIN) == {"hidden": [], "source": "admin"}
-    assert access.resolve(db, nurse) == {"hidden": ["/mnc", "/sponsorship"], "source": "automatic"}
-    assert access.resolve(db, dev)["hidden"] == []                         # hidden only if off for ALL industries
-    assert access.resolve(db, legacy)["hidden"] == []
+    # default for every user: all screens except Screening Answers, Agent Runs and the Audit Log
+    assert access.resolve(db, nurse) == {"hidden": ["/answers", "/runs", "/audit"], "source": "automatic"}
+    assert access.resolve(db, dev)["hidden"] == ["/answers", "/runs", "/audit"]
+    assert access.resolve(db, legacy)["hidden"] == ["/answers", "/runs", "/audit"]
     access.set_segment(db, "healthcare", ["/answers", "/companion", "/studio"], "admin")   # visible list
     r = access.resolve(db, nurse)
     assert r["source"] == "industry"
     assert r["hidden"] == ["/mnc", "/recruiters", "/sponsorship", "/prep", "/runs", "/audit"]
-    assert "/runs" not in access.resolve(db, dev)["hidden"]                 # technology still allows it
+    assert access.resolve(db, dev)["hidden"] == ["/runs", "/audit"]         # hidden only if off for ALL industries
     access.set_user(db, nurse, "custom", ["/runs"], "admin")
     assert access.resolve(db, nurse) == {"hidden": [p for p in access.SCREEN_PATHS if p != "/runs"], "source": "custom"}
     access.set_user(db, nurse, "auto", [], "admin")

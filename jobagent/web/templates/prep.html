@@ -6,12 +6,76 @@
 <div class="page-head">
   <div>
     <h1>Skills & Prep</h1>
-    <p>Skill gaps across the jobs you are pursuing, and tailored interview preparation per job.</p>
+    <p>The skills your chosen roles need, what employers are asking for, recognised courses to strengthen your
+    profile, and interview preparation for each job you apply to.</p>
   </div>
 </div>
 
+{% if not kit.career_set %}
+  <div class="alert alert-info" role="note">Choose your industries and roles in <a href="/welcome">Job preferences</a> to see the skills and courses for them.</div>
+{% endif %}
+
+{% if kit.roles %}
+<section class="card" aria-labelledby="roles-h">
+  <h2 id="roles-h">Skills for your roles</h2>
+  <p class="small muted">{% if kit.has_resume %}Checked against your resume: <span class="skill-have">✓ on your resume</span> · <span class="skill-need">○ worth learning or adding</span>. If you already have a skill, add it to your resume in <a href="/studio">Resume Studio</a>.{% else %}Upload your resume in <a href="/studio">Resume Studio</a> to see which of these you already show.{% endif %}</p>
+  <div class="grid grid-auto">
+    {% for r in kit.roles %}
+      <div class="role-skills">
+        <h3 class="h-sm">{{ r.label }}</h3>
+        {% if kit.has_resume %}<p class="small muted mb0">{{ r.skills|length - r.missing }} of {{ r.skills|length }} on your resume</p>{% endif %}
+        <ul class="skill-list">
+          {% for sk in r.skills %}
+            {% set pg = progress.get(sk.skill) %}
+            <li class="{{ 'skill-have' if sk.have else 'skill-need' }}"><span aria-hidden="true">{{ '✓' if sk.have else '○' }}</span> {{ sk.skill }}{% if kit.has_resume %}<span class="visually-hidden">{{ ' (on your resume)' if sk.have else ' (to learn)' }}</span>{% endif %}{% if pg %} <span class="badge b-grey">{{ PROG[pg.status] }}</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if kit.gaps.skills %}
+<section class="card" aria-labelledby="ask-h">
+  <h2 id="ask-h">What employers are asking for</h2>
+  <p class="small muted">Required skills in your best-matching open jobs that your resume doesn't show yet{% if kit.gaps.avg_score is not none %} (your average match across your top jobs: <strong>{{ '%.0f'|format(kit.gaps.avg_score) }}</strong>/100){% endif %}. Learning the top ones raises your match score.</p>
+  <ul class="ask-list">
+    {% for g in kit.gaps.skills %}
+      <li><strong>{{ g.skill }}</strong> <span class="small muted">asked for by {{ g.jobs }} job{{ '' if g.jobs == 1 else 's' }}</span>
+        <form method="post" action="/prep/skill" class="inline">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="skill" value="{{ g.skill }}">
+          <input type="hidden" name="status" value="learning">
+          {% set pg = progress.get(g.skill) %}
+          {% if pg %}<span class="badge b-grey">{{ PROG[pg.status] }}</span>{% else %}<button type="submit" class="btn btn-sm">I'm learning this</button>{% endif %}
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if kit.courses %}
+<section class="card" aria-labelledby="courses-h">
+  <h2 id="courses-h">Recommended courses & certifications</h2>
+  <p class="small muted">Recognised by employers in your field, from the official provider. {% if kit.early %}Courses suited to starting out come first.{% endif %}</p>
+  <ul class="grid grid-auto course-grid">
+    {% for c in kit.courses %}
+      <li class="course-card">
+        <strong>{{ c.name }}</strong>
+        <span class="small muted">{{ c.provider }}</span>
+        <span class="small">For: {{ c.roles|join(', ') }}</span>
+        {% if c.level == 'experienced' %}<span class="badge b-amber">Later in your career</span>{% endif %}
+        {% if c.note %}<span class="small muted">{{ c.note }}</span>{% endif %}
+        {{ m.ext(c.url, 'Official page', 'btn btn-sm') }}
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <section class="card" aria-labelledby="gaps-h">
-  <h2 id="gaps-h">Skill gaps</h2>
+  <h2 id="gaps-h">Skill gaps in jobs you're applying to</h2>
   {% if gaps %}
     <div class="table-wrap"><table>
       <thead><tr><th scope="col">Skill</th><th scope="col" class="num">Jobs</th><th scope="col">Priority</th><th scope="col">Topics</th><th scope="col">Resource</th><th scope="col">Your progress</th></tr></thead>
@@ -47,7 +111,7 @@
       </tbody>
     </table></div>
   {% else %}
-    <div class="empty"><strong>No skill gaps yet</strong>Gaps appear once jobs you are applying to have been scored.</div>
+    <div class="empty"><strong>Nothing here yet</strong>When you start an application, the skills that job needs and you're missing appear here with a study plan.</div>
   {% endif %}
 </section>
 
@@ -83,9 +147,9 @@
           <ul>{% for t in pl.interview_topics %}<li><strong>{{ t.skill }}:</strong> <span class="small">{{ t.topics|join(' · ') }}</span></li>{% endfor %}</ul>
         {% endif %}
         <div class="grid grid-3">
-          <div><h4>Data structures & algorithms</h4><ul class="small">{% for x in pl.dsa or [] %}<li>{{ x }}</li>{% endfor %}</ul></div>
-          <div><h4>System design</h4><ul class="small">{% for x in pl.system_design or [] %}<li>{{ x }}</li>{% endfor %}</ul></div>
-          <div><h4>Behavioural</h4><ul class="small">{% for x in pl.behavioral or [] %}<li>{{ x }}</li>{% endfor %}</ul></div>
+          {% if pl.dsa %}<div><h4>Data structures & algorithms</h4><ul class="small">{% for x in pl.dsa %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+          {% if pl.system_design %}<div><h4>System design</h4><ul class="small">{% for x in pl.system_design %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+          {% if pl.behavioral %}<div><h4>Behavioural</h4><ul class="small">{% for x in pl.behavioral %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
         </div>
       </div>
     </details>

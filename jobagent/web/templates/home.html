@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+{% set cs = career_summary|default({}) %}
+{% set hide = nav_hide|default([]) %}
+<div class="page-head home-head">
+  <div>
+    <h1 data-greet="{{ first_name }}">Welcome back{% if first_name %}, {{ first_name }}{% endif %}</h1>
+    {% if cs.has_career %}
+      <p>Finding <strong>{{ cs.roles|join(', ') }}</strong> jobs{% if cs.experience %} ({{ cs.experience }}){% endif %}{% if target_names %} in {{ target_names|join(', ') }}{% endif %}. <a href="/welcome/2">Change preferences</a></p>
+    {% else %}
+      <p>Tell us what you're looking for and we'll find jobs that match.</p>
+    {% endif %}
+  </div>
+  <div class="actions"><a class="btn btn-primary" href="/jobs">{{ m.ico('search') }} Browse jobs for you</a></div>
+</div>
+
+{% if not career_set %}
+  <div class="alert alert-info" role="note"><strong>Get a feed made for you.</strong> Choose your industries, roles, level and countries (2 minutes) and JobAgent searches for exactly that. <a href="/welcome/2">Set your job preferences</a></div>
+{% elif not resume and '/studio' not in hide %}
+  <div class="alert alert-info" role="note"><strong>Add your resume</strong> to get match scores, skill checks and tailored applications. <a href="/studio">Upload it in Resume Studio</a></div>
+{% endif %}
+
+<h2 class="visually-hidden">Your activity</h2>
+<div class="kpis home-kpis">
+  <a class="kpi" href="/jobs"><div class="kpi-label">Jobs for you</div><div class="kpi-value" data-count="{{ h.open_for_me }}">{{ h.open_for_me }}</div><div class="kpi-hint">{{ h.new_week }} new this week</div></a>
+  <a class="kpi" href="/applications?status=submitted&amp;status=interview&amp;status=assessment&amp;status=offer&amp;status=rejected"><div class="kpi-label">Applied</div><div class="kpi-value" data-count="{{ h.applied }}">{{ h.applied }}</div><div class="kpi-hint">applications sent</div></a>
+  <a class="kpi" href="/applications"><div class="kpi-label">In progress</div><div class="kpi-value" data-count="{{ h.in_progress }}">{{ h.in_progress }}</div><div class="kpi-hint">saved or being prepared</div></a>
+  <a class="kpi" href="/applications?status=interview&amp;status=assessment"><div class="kpi-label">Interviews</div><div class="kpi-value" data-count="{{ h.interviews }}">{{ h.interviews }}</div><div class="kpi-hint">{% if h.upcoming %}{{ h.upcoming }} coming up{% else %}incl. assessments{% endif %}</div></a>
+  <a class="kpi" href="/applications?status=offer"><div class="kpi-label">Offers</div><div class="kpi-value" data-count="{{ h.offers }}">{{ h.offers }}</div><div class="kpi-hint">congratulations!</div></a>
+</div>
+
+<div class="grid grid-2 home-grid">
+  <section class="card" aria-labelledby="rec-h">
+    <div class="card-title"><h2 id="rec-h">Recommended for your roles</h2><a class="small" href="/jobs?sort=relevant">See all</a></div>
+    {% if h.recommended %}
+      <ul class="home-list">
+        {% for j in h.recommended %}
+          <li>
+            <a class="home-job" href="/jobs?job={{ j.id }}">
+              {{ m.mono(j.employer, "mnc-logo sm") }}
+              <span class="home-job-text"><strong>{{ j.title }}</strong><span class="small muted">{{ j.employer }} · {{ m.location(j) }}{% if j.role_key %} · {{ j.role_key|role_label }}{% endif %}</span></span>
+              {% if j.score is not none %}{{ m.score_circle(j.score) }}{% endif %}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="empty"><strong>No matches yet</strong>{% if career_set %}New jobs for your roles are added every day. Check back soon, or widen your countries in <a href="/welcome/2">Job preferences</a>.{% else %}<a href="/welcome/2">Set your job preferences</a> to get recommendations.{% endif %}</div>
+    {% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="apps-h">
+    <div class="card-title"><h2 id="apps-h">Your applications</h2><a class="small" href="/applications">See all</a></div>
+    {% if h.recent %}
+      <ul class="home-list">
+        {% for a in h.recent %}
+          <li><a class="home-app" href="/applications/{{ a.id }}"><span class="home-job-text"><strong>{{ a.title }}</strong><span class="small muted">{{ a.employer }} · {{ m.d(a.submitted_at or a.updated_at) }}</span></span>{{ m.status_badge(a.status) }}</a></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="empty"><strong>No applications yet</strong>Open a recommended job and press Apply. JobAgent prepares your resume and answers, and tracks it here.</div>
+    {% endif %}
+  </section>
+</div>
+
+{% if courses %}
+<section class="card" aria-labelledby="crs-h">
+  <div class="card-title"><h2 id="crs-h">Courses to strengthen your profile</h2>{% if '/prep' not in hide %}<a class="small" href="/prep">Skills & Prep</a>{% endif %}</div>
+  <p class="small muted">Recognised by employers for {{ cs.roles|join(', ') if cs.roles else 'your roles' }}, linked to the official provider.</p>
+  <ul class="grid grid-auto course-grid">
+    {% for c in courses %}
+      <li class="course-card">
+        <strong>{{ c.name }}</strong>
+        <span class="small muted">{{ c.provider }}</span>
+        {% if c.level == 'experienced' %}<span class="badge b-amber">Later in your career</span>{% endif %}
+        {{ m.ext(c.url, 'Official page', 'btn btn-sm') }}
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if whats_new %}
+<div class="whatsnew-backdrop" data-whatsnew>
+  <div class="whatsnew" role="dialog" aria-modal="true" aria-labelledby="wn-h">
+    <h2 id="wn-h">{{ m.ico('sparkle') }} {{ whats_new.title }}</h2>
+    <ul class="whatsnew-list">
+      {% for ico, title, text in whats_new['items'] %}
+        <li>{{ m.ico(ico, 'whatsnew-ico') }}<span><strong>{{ title }}</strong><span class="small muted">{{ text }}</span></span></li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="/whats-new/seen">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="btn btn-primary" data-whatsnew-close autofocus>Got it</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -502,9 +502,9 @@ def test_onboarding_end_to_end_builds_a_personal_feed(newbie):
     assert "Registered Nurse" in c.get("/jobs", params={"view": "all", "industry": "healthcare"}).text
     assert "Backend Engineer" not in c.get("/jobs", params={"view": "all", "industry": "healthcare"}).text
     home = c.get("/").text
-    assert "Searching for <strong>Nurse</strong>" in home
-    assert 'href="/mnc"' not in home                                  # Top MNCs is not for a nurse
-    assert 'href="/sponsorship"' in home                              # needs sponsorship outside GB
+    assert "Finding <strong>Nurse</strong> jobs" in home
+    assert 'href="/mnc"' in home                                      # Top MNCs lists hospitals & pharma for her
+    assert 'href="/sponsorship"' in home
     # editing later never locks the user out
     assert c.get("/welcome", follow_redirects=False).headers["location"] == "/welcome/2"
     assert "Back to dashboard" in c.get("/welcome/2").text
@@ -533,7 +533,7 @@ def test_no_sponsorship_hides_sponsorship_pages_and_existing_accounts_are_not_fo
     c.post("/welcome/4", data={"csrf": tok, "experience": "mid", "employment_type": ["full_time"]})
     c.post("/welcome/5", data={"csrf": tok, "country": ["GB"], "arrangement": ["hybrid"], "sponsorship": "no"})
     home = c.get("/").text
-    assert 'href="/sponsorship"' not in home and 'href="/mnc"' in home        # banks are in Top MNCs
+    assert 'href="/sponsorship"' in home and 'href="/mnc"' in home        # default screens for every user
     d = newbie.db()
     s = settings_mod.get_all(d, newbie.nina)
     assert s["sponsorship_policy"] == "any" and s["candidate"]["requires_sponsorship_outside"] is False

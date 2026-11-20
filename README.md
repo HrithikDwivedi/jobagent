@@ -148,9 +148,9 @@ rows are assigned to it (SQLite table rebuilds run with foreign keys off and are
 
 ## Every industry: onboarding, personal feed and audience
 
-JobAgent is not only for software engineers. `jobagent/taxonomy.py` defines 15 industries (technology, finance,
-sales, marketing, healthcare, education, HR, operations, customer service, design, engineering, legal,
-administration, hospitality/retail, business/consulting) with 3-7 roles each, and classifies every job title (and
+JobAgent is not only for software engineers. `jobagent/taxonomy.py` defines 16 industries (technology, finance,
+sales, marketing, healthcare, education, HR, operations, customer service, design, fashion & styling, engineering,
+legal, administration, hospitality/retail, business/consulting) with 3-7 roles each, and classifies every job title (and
 the source's own category) into an industry and role.
 
 * **Onboarding** (`/welcome`): every account created through `/signup` answers five short steps at its first
@@ -166,8 +166,25 @@ the source's own category) into an industry and role.
   level (a "Store Manager" is never excluded for a manager), compares the job's key words with the resume for
   non-technical jobs, accepts internships only when chosen, and skips sponsorship filtering for users who need no
   visa. **Jobs → For you** shows only the user's industries and roles (**All jobs** shows everything, with an
-  Industry filter). The menu hides what does not apply (Top MNCs for industries outside tech/finance/business,
-  Sponsorship for users who need no visa). Users who skipped the resume still get ranked jobs.
+  Industry filter). Users who skipped the resume still get ranked jobs.
+* **Screens:** every user sees Overview, Jobs, Top MNCs, Applications, Recruiters, Application Companion,
+  Relocation & Sponsorship, Resume Studio, Skills & Prep, Job preferences, Help & Support and Settings. Screening
+  Answers, Agent Runs and the Audit Log are administrator-only until the administrator grants them (per user, or
+  per industry, under **Users & audience**).
+* **Home (Overview):** the administrator keeps the dashboard; every other user gets a personal home with a
+  greeting, their activity (jobs for them, applied, in progress, interviews, offers), jobs recommended for their
+  roles, their recent applications, recognised courses for their profile, and a one-time "What's new" pop-up
+  (`WHATS_NEW` in `web/app.py`; bump `version` per release).
+* **Skills & Prep for any role** (`jobagent/careerkit.py`): core skills per role checked against the resume, the
+  required skills the user's best-matching jobs say are missing (with the average match score), and courses and
+  certifications from professional bodies and official providers only (PMI, CFA Institute, CIPD, Google/Coursera
+  certificates, NIFT, London College of Fashion, AHA, ...). Experience-gated ones are labelled and listed last for
+  students and freshers.
+* **Top MNCs and Relocation & Sponsorship follow the profile:** each catalogue company lists its `industries`
+  (`jobagent/data/mnc_companies.json`, ~100 employers across every industry, e.g. Inditex, H&M, LVMH for fashion,
+  hospitals and pharma for healthcare, hotel groups for hospitality); users see the ones for their industries, the
+  administrator can browse all. The sponsorship list shows only jobs in the user's industries/roles and target
+  countries.
 * **Sources for every industry:** Greenhouse/Lever/Ashby boards and Arbeitnow now contribute their non-technical
   jobs too; **Jobicy** (public remote-jobs API, one feed per chosen industry, credited with a link to the original
   posting) is always on; **Adzuna** (official API, every industry in the UK, US, India, Canada, Australia and 14

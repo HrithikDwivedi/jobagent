@@ -57,6 +57,8 @@ PAGES = ["/", "/jobs", "/applications", "/mnc", "/sponsorship", "/prep", "/runs"
          "/support/1", "/companion", "/admin/users", "/admin/support", "/admin/support/1",
          "/jobs?view=all", "/applications/1", "/welcome/2", "/welcome/3", "/welcome/5", "/admin/users?segment=healthcare"]
 NEW_USER = "nina.new"
+FASHION_USER = "diya.fashion"
+USER_PAGES = ["/", "/mnc", "/sponsorship", "/prep", "/jobs", "/applications"]
 WIZARD = ["/welcome/1", "/welcome/2", "/welcome/3", "/welcome/4", "/welcome/5"]
 PUBLIC_PAGES = ["/login", "/signup", "/signed-out"]
 
@@ -145,6 +147,22 @@ def seed(cfg) -> None:
                 users_mod.set_ai_access(db, u, True, "ui", monthly_limit_usd=2.5)
         security.create_user(db, NEW_USER, PASSWORD, actor="ui", email="nina@example.com", full_name="Nina New",
                              role="user", status="approved", needs_onboarding=True)
+        # a regular (non-admin) fashion user: personal home, industry Top MNCs, skills & courses
+        fu = security.create_user(db, FASHION_USER, PASSWORD, actor="ui", email="diya@example.com",
+                                  full_name="Diya Example", role="user", status="approved")
+        settings_mod.set_value(db, "career", {"industries": ["fashion"], "roles": ["fashion_stylist",
+                                              "visual_merchandiser"], "experience": "entry"}, "ui", user_id=fu)
+        settings_mod.set_value(db, "target_countries", {"tier1": ["IN"], "tier2": [], "tier3": []}, "ui", user_id=fu)
+        for n, (title, comp) in enumerate((("Fashion Stylist", "Zara"), ("Visual Merchandiser", "H&M"),
+                                           ("Junior Fashion Stylist for Celebrity Shoots and Editorial Campaigns",
+                                            "Aditya Birla Fashion & Retail"))):
+            raw = RawJob(source="greenhouse", source_job_id=f"ui-f{n}", title=title, company=comp,
+                         location_raw="Mumbai, India", url=f"https://boards.greenhouse.io/f/jobs/{n}",
+                         apply_url=f"https://boards.greenhouse.io/f/jobs/{n}", description_text="Styling role.",
+                         published_at=iso(), employment_type="full_time")
+            upsert_raw(db, raw, s)
+        with db.transaction():
+            db.run("UPDATE jobs SET is_sample=0, last_verified_at=?", (iso(),))
         # the admin's own preferences (multi-industry) so /welcome/3 shows several groups
         settings_mod.set_value(db, "career", {"industries": ["technology", "business"],
                                               "roles": ["software_engineer", "business_analyst"],
@@ -216,6 +234,25 @@ def main() -> int:
                 if shots:
                     name = re.sub(r"[^a-z0-9]+", "_", path.strip("/") or "overview")
                     page.screenshot(path=str(shots / f"{name}_{width}.png"), full_page=False)
+            # a regular user: personal home (with the "what's new" pop-up), industry pages
+            page.context.clear_cookies()
+            page.goto(base + "/login")
+            page.fill("input[name=username]", FASHION_USER)
+            page.fill("input[name=password]", PASSWORD)
+            page.click("button[type=submit]")
+            page.wait_for_load_state("networkidle")
+            for path in USER_PAGES:
+                errors.clear()
+                resp = page.goto(base + path)
+                page.wait_for_load_state("networkidle")
+                if resp is None or resp.status >= 400:
+                    failures.append(f"[{width}px] {path} (user): HTTP {resp.status if resp else '?'}")
+                    continue
+                for i in page.evaluate(LAYOUT_JS) + errors:
+                    failures.append(f"[{width}px] {path} (user): {i}")
+                if shots:
+                    name = re.sub(r"[^a-z0-9]+", "_", path.strip("/") or "home")
+                    page.screenshot(path=str(shots / f"user_{name}_{width}.png"), full_page=False)
             # a brand-new account: the onboarding wizard in focus mode (no sidebar)
             page.context.clear_cookies()
             page.goto(base + "/login")
@@ -250,7 +287,8 @@ def main() -> int:
         print("\n".join(failures))
         print(f"\n{len(failures)} UI issue(s).")
         return 1
-    print(f"UI check passed: {len(PAGES) + len(PUBLIC_PAGES) + len(WIZARD) + 2} pages x {len(WIDTHS)} widths.")
+    n = len(PAGES) + len(PUBLIC_PAGES) + len(WIZARD) + len(USER_PAGES) + 2
+    print(f"UI check passed: {n} pages x {len(WIDTHS)} widths.")
     return 0
 
 

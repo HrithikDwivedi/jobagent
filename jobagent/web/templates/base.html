@@ -21,14 +21,14 @@
   ("/answers", "Screening Answers", "check-circle"),
   ("/recruiters", "Recruiters", "mail"),
   ("/companion", "Application Companion", "bolt"),
-  ("/sponsorship", "Sponsorship & Relocation", "sponsorship"),
-  ("/prep", "Skills & Prep", "prep"),
+  ("/sponsorship", "Relocation & Sponsorship", "sponsorship"),
   ("/studio", "Resume Studio", "studio"),
+  ("/prep", "Skills & Prep", "prep"),
+  ("/welcome", "Job preferences", "target"),
+  ("/support", "Help & Support", "info"),
+  ("/settings", "Settings", "settings"),
   ("/runs", "Agent Runs", "runs"),
   ("/audit", "Audit Log", "audit"),
-  ("/welcome", "Job preferences", "target"),
-  ("/settings", "Settings", "settings"),
-  ("/support", "Help & Support", "info"),
 ] %}
 {% set hide = nav_hide|default([]) %}
 {% set nav_items = nav_items|rejectattr(0, 'in', hide)|list %}

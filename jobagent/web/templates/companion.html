@@ -46,7 +46,7 @@
       <h2 id="h-ready">How ready your profile is</h2>
       <dl class="facts">
         <div><dt>Resume</dt><dd>{% if profile.has_resume %}<span class="badge b-green">Uploaded</span>{% else %}<a href="/studio">Upload your resume</a>{% endif %}</dd></div>
-        <div><dt>Saved screening answers</dt><dd>{{ profile.library_size }} · <a href="/answers">manage</a></dd></div>
+        <div><dt>Saved screening answers</dt><dd>{{ profile.library_size }} · {% if '/answers' not in nav_hide|default([]) %}<a href="/answers">manage</a>{% endif %}</dd></div>
         <div><dt>Privacy boxes</dt><dd>{{ 'Ticked for you' if profile.accept_privacy_notices else 'Left for you' }}</dd></div>
         <div><dt>AI answer drafts</dt><dd>{% if ai.allowed %}<span class="badge b-green">Available</span>{% else %}<span class="badge b-grey">Not enabled</span> <a href="/support?category=ai_access">request</a>{% endif %}</dd></div>
       </dl>

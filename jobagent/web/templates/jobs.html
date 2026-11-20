@@ -222,8 +222,13 @@
       <strong>No jobs match these filters</strong>
       Try removing a filter or <a href="/jobs">reset all filters</a>.
     {% else %}
+      {% if '/runs' not in nav_hide|default([]) %}
       <strong>No jobs yet — run the agent from Agent Runs</strong>
       <a class="btn btn-primary mt" href="/runs">Go to Agent Runs</a>
+      {% else %}
+      <strong>No jobs for your roles yet</strong>
+      New jobs are added every day. You can widen your roles or countries in <a href="/welcome/2">Job preferences</a>.
+      {% endif %}
     {% endif %}
   </div>
 {% else %}

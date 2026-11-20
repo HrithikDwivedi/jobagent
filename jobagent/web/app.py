@@ -33,6 +33,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from .. import agent as agent_mod
 from .. import access
+from .. import careerkit
 from .. import answers as answers_mod
 from .. import audience
 from .. import companion
@@ -65,6 +66,23 @@ ONBOARDING_OPEN = ("/welcome", "/logout", "/signed-out", "/static/", "/support",
                    "/api/companion/")
 PUBLIC_PATHS = ("/login", "/logout", "/signed-out", "/signup", "/signup/", "/setup", "/healthz", "/static/", "/api/cron/", "/api/companion/", "/favicon.ico")
 MAX_EVIDENCE_BYTES = 5 * 1024 * 1024
+# "What's new" pop-up on the home screen: bump `version` for each release; each user sees it once
+WHATS_NEW = {
+    "version": "2026-11-20",
+    "title": "What's new in JobAgent",
+    "items": [
+        ("sparkle", "A home screen made for you",
+         "Your activity, jobs picked for your roles, your applications and courses to strengthen your profile."),
+        ("star", "Fashion & styling jobs",
+         "New industry: fashion stylists, designers, visual merchandisers, buyers, retail and fashion marketing."),
+        ("prep", "Skills & courses that employers recognise",
+         "Skills & Prep now shows what your roles need, what jobs ask for, and official courses to take next."),
+        ("mnc", "Top MNCs for your industry",
+         "Big employers in your own field, from Zara and H&M to hospitals, hotels and banks."),
+        ("sponsorship", "Relocation for your profile",
+         "Visa and relocation jobs now match your industries, roles and target countries."),
+    ],
+}
 EVIDENCE_TYPES = {b"\x89PNG": ("image/png", ".png"), b"\xff\xd8\xff": ("image/jpeg", ".jpg"),
                   b"%PDF": ("application/pdf", ".pdf")}
 USER_SECTIONS = ("candidate", "search", "weights", "limits", "auto_apply", "resume_style", "notifications", "password")
@@ -480,9 +498,33 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         return redirect("/login", "ok", "Administrator account created. Sign in.")
 
     # ------------------------------------------------------------------ overview
+    @app.post("/whats-new/seen")
+    async def whats_new_seen(request: Request):
+        await form(request)                                   # CSRF check
+        settings_mod.set_value(get_db(request), "whats_new_seen", WHATS_NEW["version"], actor(request),
+                               user_id=uid(request))
+        return redirect(safe_next(request.query_params.get("next") or "/"), None, None)
+
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request):
         db = get_db(request)
+        if not is_admin(request):
+            # everyone except the administrator gets a personal home: greeting, activity, jobs for their roles,
+            # courses for their profile, their applications and what's new
+            me = uid(request)
+            us = settings_mod.get_all(db, me)
+            career = us.get("career") or {}
+            u = db.one("SELECT username, full_name FROM users WHERE id=?", (me,)) or {}
+            first = ((u.get("full_name") or "").split() or [u.get("username") or ""])[0]
+            return render(request, "home.html", {
+                "h": queries.home(db, user_id=me, career=career),
+                "first_name": first[:1].upper() + first[1:] if first else "",
+                "career": career, "career_set": taxonomy.has_career(career),
+                "courses": careerkit.courses_for(career, limit=4),
+                "resume": resume_store.canonical(db, user_id=me) is not None,
+                "whats_new": WHATS_NEW if us.get("whats_new_seen") != WHATS_NEW["version"] else None,
+                "target_names": [settings_mod.COUNTRY_NAMES.get(c, c) for c in settings_mod.all_target_countries(us)][:4],
+            })
         o = queries.overview(db, user_id=uid(request))
         spon_labels = queries.SPONSORSHIP
         ctx = {
@@ -645,11 +687,32 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
     @app.get("/mnc", response_class=HTMLResponse)
     def mnc_page(request: Request):
         db = get_db(request)
-        companies = queries.mnc_overview(db, user_id=uid(request))
+        me = uid(request)
+        companies = queries.mnc_overview(db, user_id=me)
         sector = request.query_params.get("sector") or ""
         sectors = {"big_tech": "Big tech", "product": "Product companies", "investment_bank": "Banks & finance",
-                   "consulting": "Consulting", "it_services": "IT services"}
-        shown = [c for c in companies if not sector or c["sector"] == sector]
+                   "consulting": "Consulting", "it_services": "IT services", "fashion": "Fashion & apparel",
+                   "agency": "Marketing agencies", "healthcare": "Healthcare & pharma", "education": "Education",
+                   "staffing": "Staffing & HR", "logistics": "Logistics", "fmcg": "Consumer goods (FMCG)",
+                   "cx": "Customer experience", "industrial": "Engineering & industrial", "law": "Law firms",
+                   "hospitality": "Hospitality & retail"}
+        # companies for the user's own industries (administrator: everything, or one industry with ?industry=)
+        career = settings_mod.get(db, "career", me) or {}
+        mine = [i for i in career.get("industries") or [] if i in taxonomy.BY_ID]
+        industry = request.query_params.get("industry") or ""
+        if industry and industry != "all" and industry not in taxonomy.BY_ID:
+            industry = ""
+        if is_admin(request) and (industry == "all" or (not industry and not mine)):
+            pool = companies
+            industry = industry or "all"
+        elif industry and (is_admin(request) or industry in mine):
+            pool = [c for c in companies if industry in (c.get("industries") or [])]
+        else:
+            want = set(mine or ["technology"])
+            pool = [c for c in companies if want & set(c.get("industries") or [])]
+            industry = ""
+        sectors = {k: v for k, v in sectors.items() if any(c["sector"] == k for c in pool)}
+        shown = [c for c in pool if not sector or c["sector"] == sector]
         f = queries.JobFilters.from_query(request.query_params)
         if not f.mnc:
             f.mnc = ["all"]
@@ -657,6 +720,8 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         top_rows, top_total = queries.search_jobs(db, f, user_id=uid(request),
                                                   career=settings_mod.get(db, "career", uid(request)))
         return render(request, "mnc.html", {"companies": shown, "sectors": sectors, "sector": sector,
+                                            "industry": industry, "my_industries": mine,
+                                            "all_industries": [(i.id, i.label) for i in taxonomy.INDUSTRIES],
                                             "top_rows": top_rows, "top_total": top_total,
                                             "mnc_settings": settings_mod.get(db, "mnc", None)})
 
@@ -835,13 +900,20 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
     def sponsorship(request: Request):
         db = get_db(request)
         me = uid(request)
+        s = settings_mod.get_all(db, me)
+        # only the user's own industries/roles, in the countries they target (any country if none chosen)
+        scope_sql, scope_params = taxonomy.job_scope_sql(s.get("career"), "j")
+        targets = [c for c in settings_mod.all_target_countries(s) if c]
+        country_sql = (f" AND (j.country IN ({','.join('?' * len(targets))}) OR j.country IS NULL)"
+                       if targets else "")
         rows = db.all(f"SELECT j.id, j.title, j.country, j.city, j.relocation_text, e.name AS employer, "
                       f"e.uk_sponsor_status, sa.classification, sa.evidence_json, sa.assessed_at, sc.score "
                       f"FROM jobs j JOIN employers e ON e.id=j.employer_id {queries.LATEST_SPONSOR} "
                       f"{queries.LATEST_SCORE} WHERE j.status='open' AND j.is_sample=0 AND "
-                      f"COALESCE(sa.classification,'unknown') IN ('confirmed','likely','not_supported') "
+                      f"COALESCE(sa.classification,'unknown') IN ('confirmed','likely','not_supported')"
+                      f"{scope_sql}{country_sql} "
                       f"ORDER BY CASE sa.classification WHEN 'confirmed' THEN 0 WHEN 'likely' THEN 1 ELSE 2 END, "
-                      f"sc.score DESC LIMIT 300", (me,))
+                      f"sc.score DESC LIMIT 300", (me, *scope_params, *targets))
         for r in rows:
             r["evidence"] = loads(r.pop("evidence_json"), [])
         reg = db.one("SELECT original_name, created_at FROM files WHERE kind='uk_sponsor_register' ORDER BY id DESC "
@@ -869,7 +941,8 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
                     g["priority"] = "high"
         progress = {r["skill"]: r for r in db.all("SELECT * FROM skill_progress WHERE user_id=?", (me,))}
         ordered = sorted(gap.values(), key=lambda g: (g["priority"] != "high", -g["jobs"]))
-        return render(request, "prep.html", {"plans": plans, "gaps": ordered, "progress": progress})
+        return render(request, "prep.html", {"plans": plans, "gaps": ordered, "progress": progress,
+                                             "kit": careerkit.skill_plan(db, me)})
 
     @app.post("/prep/skill")
     async def prep_skill(request: Request):

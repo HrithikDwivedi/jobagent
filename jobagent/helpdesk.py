@@ -106,7 +106,7 @@ KB: list[dict] = [
      "keywords": "visa sponsorship sponsor skilled worker register likely confirmed",
      "answer": "Sponsorship is 'confirmed' when the posting says so, 'likely' from the official UK sponsor register or "
                "strong signals, and 'not supported' when the posting rules it out. The evidence is shown on each job "
-               "under Sponsorship & Relocation. Set what you accept in Settings → Search."},
+               "under Relocation & Sponsorship. Set what you accept in Settings → Search."},
     {"id": "kb-resume-upload", "category": "resume",
      "question": "My resume upload fails or looks wrong",
      "keywords": "resume upload failed pdf docx parse scanned image wrong",
@@ -252,7 +252,12 @@ def diagnose(db: Database, user_id: int) -> list[dict]:
         out.append({"level": "info", "title": "Application Companion not connected",
                     "detail": "Fill forms on Workday, iCIMS and any other site in one click with the browser extension.",
                     "href": "/companion"})
-    return out
+    from . import access
+    hidden = access.resolve(db, user_id)["hidden"]
+    for o in out:                       # never send people to a screen the administrator turned off for them
+        if o.get("href") and access.blocked(hidden, o["href"].split("#")[0].split("?")[0]):
+            o["href"] = "/applications"
+    return [o for o in out if not (o.get("href") == "/companion" and "/companion" in hidden)]
 
 
 # ---------------------------------------------------------------- tickets

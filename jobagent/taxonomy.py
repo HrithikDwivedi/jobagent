@@ -163,6 +163,31 @@ INDUSTRIES: tuple[Industry, ...] = (
         R("video_media", "Video, Photo & Media Production", r"\b(video|film|photograph|animator|animation|editor "
           r"\(video\)|producer|multimedia|3d artist)", "video editor"),
     ), jobicy=("design-multimedia", "web-app-design"), hints=("design", "creative", "ux")),
+    Industry("fashion", "Fashion, Apparel & Styling", "star", "Styling, fashion design, merchandising and buying", (
+        R("fashion_stylist", "Fashion Stylist / Image Consultant",
+          r"^(?!.*\b(hair|nail|beauty|food|prop|lash|brow)\b).*\b(stylist|styling)\b|\b(image|wardrobe|style) "
+          r"(consultant|advisor|adviser)\b|\bpersonal shopper\b|\bwardrobe (assistant|supervisor|manager)\b|"
+          r"\bcostume (designer|assistant|supervisor)\b", "fashion stylist"),
+        R("fashion_designer", "Fashion / Apparel Designer",
+          r"\b(fashion|apparel|garment|clothing|textile|print|knitwear|womenswear|menswear|kidswear|footwear|"
+          r"accessories|jewell?ery|surface) design(er)?\b|\bpattern (maker|cutter|master)|\bpatternmaker\b|"
+          r"\btailor\b|\bdesign assistant\b.*\bfashion", "fashion designer"),
+        R("visual_merchandiser", "Visual Merchandiser", r"\bvisual merchandis|\bwindow (display|dresser)|"
+          r"\bvm (executive|manager|associate|lead)\b", "visual merchandiser"),
+        R("fashion_buying", "Fashion Buyer / Merchandiser", r"\b(fashion|apparel|garment|clothing|footwear|"
+          r"textile|export|product|retail|wholesale|junior|assistant|senior)? ?merchandiser\b(?<!visual merchandiser)|"
+          r"\b(fashion|apparel|womenswear|menswear|footwear|clothing|knitwear|accessories) buyer\b|"
+          r"\bbuying (assistant|administrator|admin|manager|coordinator)\b|\bmerchandise planner|\ballocator\b",
+          "fashion merchandiser"),
+        R("fashion_retail", "Fashion Retail / Client Advisor", r"\b(fashion|luxury|boutique|apparel|clothing|"
+          r"footwear|bridal|ethnic wear) (consultant|advisor|adviser|associate|sales|assistant|specialist|"
+          r"executive)\b|\bstore stylist\b", "fashion consultant"),
+        R("fashion_marketing", "Fashion Marketing, PR & Content", r"\bfashion (marketing|pr|public relations|"
+          r"communications|content|editor|writer|journalist|blogger|influencer|photographer)\b", "fashion marketing"),
+        R("fashion_production", "Garment Production & Sourcing", r"\b(garment|apparel|textile|fashion) "
+          r"(production|technologist|quality|qa|qc|sourcing|technician|manufacturing)\b|\bfabric (sourcing|"
+          r"technologist|manager)\b|\bproduct developer\b.*\b(apparel|fashion)", "garment production"),
+    ), hints=("fashion", "apparel", "clothing", "garment", "textile", "luxury", "boutique", "footwear")),
     Industry("engineering", "Engineering & Manufacturing", "settings", "Mechanical, electrical, civil and production", (
         R("mechanical", "Mechanical Engineer", r"\bmechanical\b|\bmechatronic|\bhvac\b|\bdesign engineer",
           "mechanical engineer"),
@@ -217,7 +242,8 @@ BY_ID = {i.id: i for i in INDUSTRIES}
 ROLES = {r.id: (ind.id, r) for ind in INDUSTRIES for r in ind.roles}
 _COMPILED = [(ind.id, r.id, re.compile(r.pattern)) for ind in INDUSTRIES for r in ind.roles]
 # precedence for overlapping titles: most specific first (e.g. "Sales Engineer" is pre-sales, not software)
-_ORDER = ["presales", "store_manager", "product_manager", "data_ai", "devops_cloud", "qa_testing", "cybersecurity", "it_support",
+_ORDER = ["visual_merchandiser", "fashion_stylist", "fashion_designer", "fashion_buying", "fashion_retail",
+          "fashion_marketing", "fashion_production", "presales", "store_manager", "product_manager", "data_ai", "devops_cloud", "qa_testing", "cybersecurity", "it_support",
           "ux_ui_designer", "electrical", "mechanical", "civil", "quality", "manufacturing", "software_engineer"]
 
 EXPERIENCE = {

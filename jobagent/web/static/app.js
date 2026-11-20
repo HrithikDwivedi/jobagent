@@ -777,4 +777,25 @@
       upd();
     }
   }
+
+  // ---------------------------------------------------------------- home: greeting by local time, "what's new"
+  ready(function () {
+    var g = doc.querySelector("[data-greet]");
+    if (g) {
+      var hr = new Date().getHours();
+      var part = hr < 5 ? "Good evening" : hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening";
+      var name = g.getAttribute("data-greet");
+      g.textContent = part + (name ? ", " + name : "");
+    }
+    var wn = doc.querySelector("[data-whatsnew]");
+    if (wn) {
+      doc.body.classList.add("has-modal");
+      var btn = wn.querySelector("[data-whatsnew-close]");
+      if (btn) btn.focus();
+      wn.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && btn) { e.preventDefault(); btn.click(); }
+        if (e.key === "Tab") { e.preventDefault(); if (btn) btn.focus(); }   // one control: keep focus inside
+      });
+    }
+  });
 })();

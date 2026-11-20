@@ -117,6 +117,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     # their own words, experience level and employment types. Empty = legacy software-engineering profile.
     # administrator: screens turned off per target industry ({industry: ["/mnc", ...]}); see access.py
     "segment_screens": {},
+    # per user: the "What's new" release the user has dismissed (web/app.py WHATS_NEW["version"])
+    "whats_new_seen": "",
     "career": {"industries": [], "roles": [], "custom_roles": [], "experience": None,
                "employment_types": ["full_time"], "onboarded_at": None},
     "resume_style": {
@@ -406,6 +408,11 @@ def validate(key: str, value: Any) -> Any:
                 raise SettingsError(f"Unknown industry {ind!r}.")
             out[ind] = [p for p in dict.fromkeys(paths) if p in SCREEN_PATHS]
         return out
+    if key == "whats_new_seen":
+        v = str(value or "")[:20]
+        if v and not all(ch.isalnum() or ch in "-._" for ch in v):
+            raise SettingsError("Invalid release id.")
+        return v
     if key == "answer_library":
         if not isinstance(value, list):
             raise SettingsError("answer_library must be a list")

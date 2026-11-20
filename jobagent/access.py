@@ -4,8 +4,9 @@ Three layers, most specific wins:
   1. per user ("Custom"): users.screens = JSON list of screens turned OFF for that person,
   2. per industry ("Industry"): settings key `segment_screens` = {industry: [screens off]}, applied to everyone who
      targets that industry (a screen is hidden only if it is off for ALL of the user's industries),
-  3. automatic defaults: Top MNCs only for technology/finance/business seekers, Sponsorship only for people who
-     need a visa.
+  3. automatic defaults: every user sees Overview, Jobs, Top MNCs, Applications, Recruiters, Application Companion,
+     Relocation & Sponsorship, Resume Studio, Skills & Prep, Job preferences, Help & Support and Settings.
+     Screening Answers, Agent Runs and the Audit Log stay administrator-only until the administrator grants them.
 Hidden screens disappear from the menu AND are refused by the server (the extension API too, for the Companion).
 The administrator always sees everything. Core screens (Overview, Jobs, Applications, Job preferences, Settings,
 Help & Support) can never be turned off."""
@@ -20,7 +21,7 @@ SCREENS: tuple[tuple[str, str], ...] = (
     ("/answers", "Screening Answers"),
     ("/recruiters", "Recruiters"),
     ("/companion", "Application Companion"),
-    ("/sponsorship", "Sponsorship & Relocation"),
+    ("/sponsorship", "Relocation & Sponsorship"),
     ("/prep", "Skills & Prep"),
     ("/studio", "Resume Studio"),
     ("/runs", "Agent Runs"),
@@ -29,7 +30,8 @@ SCREENS: tuple[tuple[str, str], ...] = (
 SCREEN_PATHS = tuple(p for p, _ in SCREENS)
 LABELS = dict(SCREENS)
 CORE = ("/", "/jobs", "/applications", "/welcome", "/settings", "/support")
-MNC_INDUSTRIES = {"technology", "finance", "business"}
+# off for everyone except the administrator, unless granted per user ("Custom") or per industry
+DEFAULT_HIDDEN = ("/answers", "/runs", "/audit")
 
 
 class AccessError(Exception):
@@ -37,7 +39,7 @@ class AccessError(Exception):
 
 
 def default_industry_hidden(industry: str) -> list[str]:
-    return [] if industry in MNC_INDUSTRIES else ["/mnc"]
+    return list(DEFAULT_HIDDEN)
 
 
 def segment_rules(db: Database) -> dict[str, list[str]]:
@@ -59,7 +61,7 @@ def resolve(db: Database, user_id: int, *, settings: dict | None = None) -> dict
         return {"hidden": clean(loads(u["screens"], [])), "source": "custom"}
     s = settings or settings_mod.get_all(db, user_id)
     inds = list((s.get("career") or {}).get("industries") or [])
-    hidden: list[str] = []
+    hidden: list[str] = list(DEFAULT_HIDDEN)
     source = "automatic"
     if inds:
         rules = segment_rules(db)
@@ -68,8 +70,6 @@ def resolve(db: Database, user_id: int, *, settings: dict | None = None) -> dict
         saved = settings_mod.get(db, "segment_screens", None) or {}
         if any(i in saved for i in inds):
             source = "industry"
-    if not (s.get("candidate") or {}).get("requires_sponsorship_outside", True) and "/sponsorship" not in hidden:
-        hidden.append("/sponsorship")
     return {"hidden": [p for p in SCREEN_PATHS if p in hidden], "source": source}
 
 

@@ -5,8 +5,9 @@
 <div class="page-head">
   <div>
     <h1>Top MNCs</h1>
-    <p>Software-engineering openings at large multinationals, pulled from each company's own careers site. Applying
-    from here tailors a one-page resume to that company's style and the job's requirements.</p>
+    <p>Large employers in {% if my_industries %}your industries ({{ my_industries|map('industry_label')|join(', ') }}){% else %}your field{% endif %},
+    with their openings in your target countries and a link to each official careers site. Applying from here
+    tailors a one-page resume to that company's style and the job's requirements.</p>
   </div>
   <div class="row">
     <a class="btn" href="/jobs?mnc=all"><svg class="ico" aria-hidden="true"><use href="/static/icons.svg#filter"></use></svg> All MNC jobs with filters</a>
@@ -17,12 +18,31 @@
   <div class="alert alert-warn" role="alert">MNC feeds are switched off in <a href="/settings#sources">Settings</a>.</div>
 {% endif %}
 
-<nav class="settings-nav" aria-label="Filter by sector">
-  <a class="chip" href="/mnc"{% if not sector %} aria-current="true"{% endif %}>All</a>
-  {% for k, l in sectors.items() %}
-    <a class="chip" href="/mnc?sector={{ k }}"{% if sector == k %} aria-current="true"{% endif %}>{{ l }}</a>
+{% if is_admin %}
+<nav class="settings-nav" aria-label="Filter by industry">
+  <a class="chip" href="/mnc"{% if not industry %} aria-current="true"{% endif %}>My industries</a>
+  <a class="chip" href="/mnc?industry=all"{% if industry == 'all' %} aria-current="true"{% endif %}>All</a>
+  {% for k, l in all_industries %}
+    <a class="chip" href="/mnc?industry={{ k }}"{% if industry == k %} aria-current="true"{% endif %}>{{ l }}</a>
   {% endfor %}
 </nav>
+{% elif my_industries|length > 1 %}
+<nav class="settings-nav" aria-label="Filter by industry">
+  <a class="chip" href="/mnc"{% if not industry %} aria-current="true"{% endif %}>All my industries</a>
+  {% for k in my_industries %}
+    <a class="chip" href="/mnc?industry={{ k }}"{% if industry == k %} aria-current="true"{% endif %}>{{ k|industry_label }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+{% if sectors|length > 1 %}
+<nav class="settings-nav" aria-label="Filter by sector">
+  <a class="chip" href="/mnc{% if industry %}?industry={{ industry }}{% endif %}"{% if not sector %} aria-current="true"{% endif %}>All sectors</a>
+  {% for k, l in sectors.items() %}
+    <a class="chip" href="/mnc?sector={{ k }}{% if industry %}&amp;industry={{ industry }}{% endif %}"{% if sector == k %} aria-current="true"{% endif %}>{{ l }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+{% if not companies %}<p class="muted">No companies listed for this industry yet.</p>{% endif %}
 
 <section aria-labelledby="co-h">
   <h2 id="co-h" class="visually-hidden">Companies</h2>
@@ -35,7 +55,7 @@
       </div>
       <h3 class="mnc-name">{{ c.name }}</h3>
       {% if c.has_feed %}
-        <p class="mnc-stat"><strong>{{ c.open_jobs }}</strong> open software role{{ '' if c.open_jobs == 1 else 's' }} in your target countries
+        <p class="mnc-stat"><strong>{{ c.open_jobs }}</strong> open role{{ '' if c.open_jobs == 1 else 's' }} in your target countries
           {% if c.best_score %}<br><span class="small muted">Best match {{ '%.0f'|format(c.best_score) }} · {{ c.apply_count }} recommended</span>{% endif %}
           {% if c.applications %}<br><span class="small">{{ c.applications }} application{{ '' if c.applications == 1 else 's' }} tracked</span>{% endif %}
         </p>
@@ -44,8 +64,12 @@
           {{ m.ext(c.careers_url, "Careers site", "btn btn-sm") }}
         </div>
       {% else %}
-        <p class="mnc-stat small muted">No public feed that permits automated access{% if c.why_no_feed %} ({{ c.why_no_feed }}){% endif %}. Search on their official site and use “Already applied elsewhere” so JobAgent tracks it.</p>
-        <div class="row">{{ m.ext(c.careers_url, "Search software jobs", "btn btn-primary btn-sm") }}</div>
+        {% if c.open_jobs %}<p class="mnc-stat"><strong>{{ c.open_jobs }}</strong> open role{{ '' if c.open_jobs == 1 else 's' }} found on job boards</p>{% endif %}
+        <p class="mnc-stat small muted">Search their official careers site, then use “Already applied elsewhere” so JobAgent tracks it.</p>
+        <div class="row">
+          {% if c.open_jobs %}<a class="btn btn-sm" href="/jobs?mnc={{ c.key }}">View jobs</a>{% endif %}
+          {{ m.ext(c.careers_url, "Careers site", "btn btn-primary btn-sm") }}
+        </div>
       {% endif %}
     </li>
   {% endfor %}
@@ -74,7 +98,7 @@
       </tbody>
     </table></div>
   {% else %}
-    <p class="muted">No MNC jobs yet. Run the agent from <a href="/runs">Agent Runs</a>; MNC career sites are fetched first.</p>
+    <p class="muted">No openings from these companies in your roles yet. New jobs are added every day.</p>
   {% endif %}
 </section>
 {% endblock %}

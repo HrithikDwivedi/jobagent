@@ -408,3 +408,40 @@ def visible_runs(db: Database, *, user_id: int, is_admin: bool, limit: int = 100
     if is_admin:
         return db.all("SELECT * FROM runs ORDER BY started_at DESC LIMIT ?", (limit,))
     return db.all("SELECT * FROM runs WHERE user_id=? ORDER BY started_at DESC LIMIT ?", (user_id, limit))
+
+
+def home(db: Database, *, user_id: int, career: dict | None) -> dict:
+    """The personal home screen for a (non-admin) user: activity, jobs recommended for their roles, applications."""
+    from .. import taxonomy
+    scope_sql, scope_params = taxonomy.job_scope_sql(career, "j")
+    counts = {r["status"]: r["n"] for r in db.all("SELECT status, COUNT(*) AS n FROM applications WHERE is_sample=0 "
+                                                  "AND user_id=? GROUP BY status", (user_id,))}
+    applied = sum(counts.get(k, 0) for k in ("submitted", "interview", "assessment", "offer", "rejected"))
+    week_ago = iso(utcnow() - timedelta(days=7))
+    new_week = int(db.scalar(f"SELECT COUNT(*) FROM jobs j WHERE j.status='open' AND j.is_sample=0 AND "
+                             f"j.first_discovered_at >= ?{scope_sql}", (week_ago, *scope_params)) or 0)
+    open_for_me = int(db.scalar(f"SELECT COUNT(*) FROM jobs j WHERE j.status='open' AND j.is_sample=0{scope_sql}",
+                                tuple(scope_params)) or 0)
+    recommended = db.all(
+        f"SELECT j.id, j.title, j.country, j.city, j.remote_type, j.role_key, j.first_discovered_at, "
+        f"e.name AS employer, sc.score, sc.recommendation FROM jobs j JOIN employers e ON e.id=j.employer_id "
+        f"{LATEST_SCORE} {USER_APP} WHERE j.status='open' AND j.is_sample=0 AND a.id IS NULL "
+        f"AND COALESCE(sc.recommendation, '') <> 'skip'{scope_sql} "
+        f"ORDER BY CASE WHEN sc.score IS NULL THEN 1 ELSE 0 END, sc.score DESC, j.first_discovered_at DESC LIMIT 6",
+        (user_id, user_id, *scope_params))
+    recent = db.all(
+        "SELECT a.id, a.status, a.updated_at, a.submitted_at, j.title, e.name AS employer FROM applications a "
+        "JOIN jobs j ON j.id=a.job_id JOIN employers e ON e.id=j.employer_id WHERE a.user_id=? AND a.is_sample=0 "
+        "ORDER BY a.updated_at DESC LIMIT 6", (user_id,))
+    today = utcnow().date().isoformat()
+    upcoming = int(db.scalar("SELECT COUNT(*) FROM applications WHERE user_id=? AND is_sample=0 AND "
+                             "(interview_at >= ? OR follow_up_at >= ?)", (user_id, today, today)) or 0)
+    return {
+        "applied": applied,
+        "in_progress": sum(counts.get(k, 0) for k in ("shortlisted", "awaiting_approval", "ready_to_apply",
+                                                       "application_started", "submission_failed")),
+        "interviews": counts.get("interview", 0) + counts.get("assessment", 0),
+        "offers": counts.get("offer", 0),
+        "new_week": new_week, "open_for_me": open_for_me, "upcoming": upcoming,
+        "recommended": recommended, "recent": recent,
+    }
