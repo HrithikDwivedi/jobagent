@@ -1,0 +1,37 @@
+{# Free and paid courses. Needs: courses_free, courses_paid, show_roles (bool), id_prefix. #}
+{% import "_macros.html" as m with context %}
+{% macro card(c, show_roles) -%}
+  <li class="course-card">
+    <strong>{{ c.name }}</strong>
+    <span class="small muted">{{ c.provider }}</span>
+    {% if show_roles and c.roles %}<span class="small">For: {{ c.roles|join(', ') }}</span>{% endif %}
+    <span class="course-badges">
+      {% if c.cost == 'free' %}<span class="badge b-green">Free</span>
+      {% elif c.cost == 'free_learn' %}<span class="badge b-teal">Free to learn</span>
+      {% else %}<span class="badge b-blue">Paid</span>{% endif %}
+      {% if c.level == 'experienced' %}<span class="badge b-amber">Later in your career</span>{% endif %}
+    </span>
+    {% if c.note %}<span class="small muted">{{ c.note }}</span>{% endif %}
+    {{ m.ext(c.url, 'Official page', 'btn btn-sm') }}
+  </li>
+{%- endmacro %}
+<div class="course-split">
+  <div class="course-col">
+    <h3 class="h-sm" id="{{ id_prefix }}-free">{{ m.ico('check-circle') }} Free courses</h3>
+    <p class="small muted">No cost to learn. “Free to learn” means the certificate has a small fee.</p>
+    {% if courses_free %}
+      <ul class="grid grid-auto course-grid" aria-labelledby="{{ id_prefix }}-free">
+        {% for c in courses_free %}{{ card(c, show_roles) }}{% endfor %}
+      </ul>
+    {% else %}<p class="small muted">No free courses listed for your roles yet.</p>{% endif %}
+  </div>
+  <div class="course-col">
+    <h3 class="h-sm" id="{{ id_prefix }}-paid">{{ m.ico('money') }} Paid courses & certifications</h3>
+    <p class="small muted">Recognised credentials from professional bodies and official providers.</p>
+    {% if courses_paid %}
+      <ul class="grid grid-auto course-grid" aria-labelledby="{{ id_prefix }}-paid">
+        {% for c in courses_paid %}{{ card(c, show_roles) }}{% endfor %}
+      </ul>
+    {% else %}<p class="small muted">No paid courses listed for your roles yet.</p>{% endif %}
+  </div>
+</div>

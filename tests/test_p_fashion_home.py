@@ -306,3 +306,39 @@ def test_home_recommends_only_the_users_roles_and_countries(tmp_path):
     assert "Fashion Stylist" not in rec and "MITRE" not in rec
     kpi = home.split("Jobs for you")[1][:200]
     assert 'data-count="2"' in kpi
+
+
+# =============================================================================== free and paid courses
+
+def test_every_role_has_free_recognised_courses():
+    for rid in taxonomy.ROLES:
+        free = careerkit.FREE.get(rid, ())
+        assert free, rid
+        assert all(careerkit.is_free(c) and c.url.startswith("https://") for c in free), rid
+    paid_named_free = [c.name for _s, cs in careerkit.KIT.values() for c in cs
+                       if not careerkit.is_free(c) and "(free)" in c.name.lower()]
+    assert paid_named_free == []                                  # anything called "(free)" is marked free
+
+
+def test_courses_split_into_free_and_paid():
+    career = {"industries": ["technology"], "roles": ["software_engineer"], "experience": "mid"}
+    free = careerkit.courses_for(career, limit=8, cost="free")
+    paid = careerkit.courses_for(career, limit=8, cost="paid")
+    assert free and paid
+    assert all(c["cost"] in ("free", "free_learn") for c in free)
+    assert all(c["cost"] == "paid" for c in paid)
+    assert any("Harvard" in c["provider"] for c in free) and any("Amazon" in c["provider"] for c in paid)
+    assert not {c["url"] for c in free} & {c["url"] for c in paid}
+
+
+def test_home_and_prep_show_free_and_paid_sections(fashion_site):
+    w = fashion_site
+    assert w.login("diya", TEST_PASSWORD).status_code == 303
+    for path in ("/", "/prep"):
+        page = w.client.get(path).text
+        assert "Free courses" in page and "Paid courses & certifications" in page, path
+        free = page.split("Free courses")[1].split("Paid courses")[0]
+        paid = page.split("Paid courses")[1]
+        assert "London College of Fashion &amp; Kering" in free or "Canva" in free, path
+        assert "NIFT" in paid or "London College of Fashion · UAL" in paid, path
+        assert 'badge b-green">Free<' in page or 'badge b-teal">Free to learn<' in page

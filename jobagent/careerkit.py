@@ -5,6 +5,8 @@
 * Every course links to the provider's own official page.
 * `level`: "start" suits students and freshers; "experienced" usually needs work experience before you can sit it
   (shown later in a career, with a note).
+* `cost`: "free" (learning and certificate/badge free), "free_learn" (free to learn; the certificate or exam has a
+  fee, e.g. SWAYAM/NPTEL, edX/Coursera audit), "paid". Pages show Free and Paid in separate sections.
 * `skill_plan()` combines three signals: the role's core skills, which of them the resume already shows, and the
   required skills that the user's scored jobs say are missing ("resume score" gaps)."""
 from __future__ import annotations
@@ -24,10 +26,16 @@ class Course:
     url: str
     level: str = "start"          # start | experienced
     note: str = ""
+    cost: str = "paid"            # free | free_learn | paid
 
 
-def C(name, provider, url, level="start", note=""):
-    return Course(name, provider, url, level, note)
+def C(name, provider, url, level="start", note="", cost="paid"):
+    return Course(name, provider, url, level, note, cost)
+
+
+def F(name, provider, url, note="", cost="free"):
+    """A free course (cost="free_learn": free to learn, the certificate has a fee)."""
+    return Course(name, provider, url, "start", note, cost)
 
 
 # ----------------------------------------------------------------------------------------------- shared courses
@@ -42,16 +50,17 @@ GOOGLE_UX = C("Google UX Design Professional Certificate", "Google · Coursera",
 GOOGLE_DM = C("Google Digital Marketing & E-commerce Certificate", "Google · Coursera",
               "https://www.coursera.org/professional-certificates/google-digital-marketing-ecommerce")
 GOOGLE_SKILLSHOP = C("Google Ads & Google Analytics certifications (free)", "Google Skillshop",
-                     "https://skillshop.withgoogle.com/")
+                     "https://skillshop.withgoogle.com/", cost="free")
 META_SMM = C("Meta Social Media Marketing Professional Certificate", "Meta · Coursera",
              "https://www.coursera.org/professional-certificates/facebook-social-media-marketing")
 HUBSPOT_INBOUND = C("Inbound Marketing Certification (free)", "HubSpot Academy",
-                    "https://academy.hubspot.com/courses/inbound-marketing")
+                    "https://academy.hubspot.com/courses/inbound-marketing", cost="free")
 HUBSPOT_CONTENT = C("Content Marketing Certification (free)", "HubSpot Academy",
-                    "https://academy.hubspot.com/courses/content-marketing")
+                    "https://academy.hubspot.com/courses/content-marketing", cost="free")
 HUBSPOT_SALES = C("Inbound Sales Certification (free)", "HubSpot Academy",
-                  "https://academy.hubspot.com/courses/inbound-sales")
-SEMRUSH = C("SEO Fundamentals and SEO Toolkit courses (free)", "Semrush Academy", "https://www.semrush.com/academy/")
+                  "https://academy.hubspot.com/courses/inbound-sales", cost="free")
+SEMRUSH = C("SEO Fundamentals and SEO Toolkit courses (free)", "Semrush Academy", "https://www.semrush.com/academy/",
+            cost="free")
 PMP = C("Project Management Professional (PMP)", "PMI", "https://www.pmi.org/certifications/project-management-pmp",
         "experienced", "Needs 3+ years of project experience.")
 CAPM = C("Certified Associate in Project Management (CAPM)", "PMI",
@@ -70,7 +79,8 @@ ADOBE_ACP = C("Adobe Certified Professional (Photoshop, Illustrator, Premiere Pr
 AUTODESK = C("Autodesk Certified User / Professional (AutoCAD, Revit, Fusion)", "Autodesk",
              "https://www.autodesk.com/certification")
 BLS = C("Basic Life Support (BLS) / ACLS", "American Heart Association", "https://cpr.heart.org/")
-GCP = C("Good Clinical Practice (free)", "NIDA Clinical Trials Network", "https://gcp.nihtraining.com/")
+GCP = C("Good Clinical Practice (free)", "NIDA Clinical Trials Network", "https://gcp.nihtraining.com/",
+        cost="free")
 NRF_RISE = C("RISE Up retail credentials", "NRF Foundation", "https://nrffoundation.org/riseup")
 UAL_SHORT = C("Fashion short courses (styling, buying, visual merchandising, design)",
               "London College of Fashion · UAL", "https://www.arts.ac.uk/study-at-ual/short-courses")
@@ -156,6 +166,160 @@ NALA = C("Certified Paralegal (CP)", "NALA", "https://www.nala.org/certification
 WORLDATWORK = C("Certified Compensation Professional (CCP)", "WorldatWork",
                 "https://worldatwork.org/certification", "experienced")
 IAAP = C("Certified Administrative Professional (CAP)", "IAAP", "https://www.iaap-hq.org/", "experienced")
+
+# -------------------------------------------------------------------------------------------- free courses
+# Recognised in their field: run by universities, governments, professional bodies or the vendors employers use.
+NO_CERT = "Free learning (no certificate)."
+CS50 = F("CS50: Introduction to Computer Science", "Harvard University", "https://cs50.harvard.edu/x/",
+         "Free, including a certificate from CS50.")
+FCC = F("freeCodeCamp certifications (web, JavaScript, Python, data)", "freeCodeCamp",
+        "https://www.freecodecamp.org/learn")
+MS_LEARN = F("Microsoft Learn training paths (Azure, Power BI, Excel, Microsoft 365)", "Microsoft",
+             "https://learn.microsoft.com/en-us/training/", "Free training; certification exams are paid.")
+AWS_SB = F("AWS Skill Builder free digital training", "Amazon Web Services", "https://skillbuilder.aws/",
+           "Free courses; certification exams are paid.")
+GCLOUD = F("Google Cloud Skills Boost", "Google Cloud", "https://www.cloudskillsboost.google/",
+           "Free courses and skill badges; some labs need credits.")
+KAGGLE = F("Kaggle Learn (Python, SQL, pandas, machine learning)", "Kaggle (Google)", "https://www.kaggle.com/learn",
+           "Free, with certificates of completion.")
+LINUX101 = F("Introduction to Linux (LFS101)", "The Linux Foundation",
+             "https://training.linuxfoundation.org/training/introduction-to-linux/")
+TAU = F("Test Automation University", "Applitools", "https://testautomationu.applitools.com/",
+        "Free, with certificates per course.")
+NETACAD = F("Cisco Networking Academy (networking, cybersecurity, IT essentials)", "Cisco",
+            "https://www.netacad.com/", "Free self-paced courses with certificates and badges.")
+ISC2_CC = F("Certified in Cybersecurity (CC)", "ISC2", "https://www.isc2.org/certifications/cc",
+            "Training and exam free through ISC2's One Million Certified programme (yearly fee after passing).")
+SCRUM_OPEN = F("Scrum.org Open Assessments (Scrum, Product Owner)", "Scrum.org",
+               "https://www.scrum.org/open-assessments", "Free practice tests (no certificate).")
+AGILE_COACH = F("Agile Coach guides (Scrum, Kanban, roadmaps)", "Atlassian", "https://www.atlassian.com/agile", NO_CERT)
+CFI_FREE = F("Free finance courses (accounting, Excel, modelling)", "Corporate Finance Institute",
+             "https://corporatefinanceinstitute.com/collections/free-courses/", "Free, with certificates of completion.")
+VARSITY = F("Varsity (markets, trading, personal finance)", "Zerodha (India)", "https://zerodha.com/varsity/", NO_CERT)
+TRAILHEAD = F("Trailhead (CRM, sales, service)", "Salesforce", "https://trailhead.salesforce.com/",
+              "Free modules and badges; certifications are paid.")
+HUBSPOT_SALES_MGMT = F("Sales Management Training (free)", "HubSpot Academy",
+                       "https://academy.hubspot.com/courses/sales-management")
+HUBSPOT_SOCIAL = F("Social Media Marketing Certification (free)", "HubSpot Academy",
+                   "https://academy.hubspot.com/courses/social-media")
+HUBSPOT_SERVICE = F("Customer Service Certification (free)", "HubSpot Academy",
+                    "https://academy.hubspot.com/courses/customer-service")
+DIGITAL_GARAGE = F("Fundamentals of Digital Marketing", "Google Digital Garage",
+                   "https://learndigital.withgoogle.com/digitalgarage/course/digital-marketing",
+                   "Free, with a certificate (accredited by IAB Europe).")
+OPENWHO = F("OpenWHO courses (infection prevention, emergencies, public health)", "World Health Organization",
+            "https://openwho.org/", "Free, with records of achievement.")
+WHO_ACADEMY = F("WHO Academy courses for health workers", "World Health Organization",
+                "https://www.who.int/about/who-academy")
+DIKSHA = F("Teacher training courses", "DIKSHA, Ministry of Education (India)", "https://diksha.gov.in/",
+           "Free, with certificates.")
+SWAYAM = F("SWAYAM courses from IITs, IIMs and Indian universities", "Government of India", "https://swayam.gov.in/",
+           "Free to learn; the proctored exam for a certificate has a small fee.", cost="free_learn")
+NPTEL = F("NPTEL engineering and science courses", "IITs & IISc (India)", "https://nptel.ac.in/",
+          "Free to learn; the certificate exam has a small fee.", cost="free_learn")
+MIT_OCW = F("MIT OpenCourseWare", "Massachusetts Institute of Technology", "https://ocw.mit.edu/", NO_CERT)
+MITX_SCM = F("MicroMasters in Supply Chain Management", "MITx · edX",
+             "https://www.edx.org/masters/micromasters/mitx-supply-chain-management",
+             "Free to audit; the verified certificate is paid.", cost="free_learn")
+EDX_PM = F("Project management courses", "edX (universities)", "https://www.edx.org/learn/project-management",
+           "Free to audit; certificates are paid.", cost="free_learn")
+DARDEN_PM = F("Fundamentals of Project Planning and Management", "University of Virginia Darden · Coursera",
+              "https://www.coursera.org/learn/uva-darden-project-management",
+              "Free to audit; the certificate is paid.", cost="free_learn")
+LEARN_HOW = F("Learning How to Learn", "Deep Teaching Solutions · Coursera",
+              "https://www.coursera.org/learn/learning-how-to-learn", "Free to audit; the certificate is paid.",
+              cost="free_learn")
+CANVA_SCHOOL = F("Design School (layout, colour, mood boards, social graphics)", "Canva",
+                 "https://www.canva.com/designschool/", NO_CERT)
+FIGMA_LIB = F("Figma resource library (UI, prototyping, design systems)", "Figma",
+              "https://www.figma.com/resource-library/", NO_CERT)
+CIPD_KNOW = F("CIPD knowledge hub (guides, factsheets, research)", "CIPD", "https://www.cipd.org/uk/knowledge/",
+              NO_CERT)
+SHRM_TOOLS = F("SHRM topics and tools (HR guides and templates)", "SHRM", "https://www.shrm.org/topics-tools",
+               "Free articles and tools; some resources are for members.")
+LCF_SUSTAIN = F("Fashion and Sustainability: Understanding Luxury Fashion", "London College of Fashion & Kering · "
+                "FutureLearn", "https://www.futurelearn.com/courses/fashion-and-sustainability",
+                "Free to join for a limited time; the certificate is paid.", cost="free_learn")
+
+FREE: dict[str, tuple[Course, ...]] = {
+    "software_engineer": (CS50, FCC, AWS_SB, MS_LEARN),
+    "data_ai": (KAGGLE, MS_LEARN, FCC),
+    "devops_cloud": (AWS_SB, LINUX101, GCLOUD, MS_LEARN),
+    "qa_testing": (TAU, FCC),
+    "it_support": (NETACAD, MS_LEARN, LINUX101),
+    "cybersecurity": (ISC2_CC, NETACAD),
+    "product_manager": (SCRUM_OPEN, AGILE_COACH, DARDEN_PM),
+    "accountant": (CFI_FREE, SWAYAM, MS_LEARN),
+    "financial_analyst": (CFI_FREE, VARSITY),
+    "audit_tax": (CFI_FREE, SWAYAM),
+    "banking": (SWAYAM, VARSITY, CFI_FREE),
+    "investment": (VARSITY, CFI_FREE),
+    "payroll": (MS_LEARN, SWAYAM),
+    "sales_executive": (HUBSPOT_SALES, TRAILHEAD),
+    "business_development": (HUBSPOT_SALES, TRAILHEAD),
+    "account_manager": (HUBSPOT_SALES_MGMT, TRAILHEAD),
+    "sales_manager": (HUBSPOT_SALES_MGMT, TRAILHEAD),
+    "presales": (AWS_SB, TRAILHEAD, MS_LEARN),
+    "digital_marketing": (DIGITAL_GARAGE, GOOGLE_SKILLSHOP, HUBSPOT_SOCIAL),
+    "content_writer": (HUBSPOT_CONTENT, SEMRUSH, DIGITAL_GARAGE),
+    "social_media": (HUBSPOT_SOCIAL, DIGITAL_GARAGE, CANVA_SCHOOL),
+    "seo": (SEMRUSH, GOOGLE_SKILLSHOP, DIGITAL_GARAGE),
+    "pr_comms": (HUBSPOT_CONTENT, DIGITAL_GARAGE),
+    "brand_manager": (DIGITAL_GARAGE, HUBSPOT_INBOUND),
+    "nurse": (OPENWHO, WHO_ACADEMY),
+    "doctor": (OPENWHO, WHO_ACADEMY),
+    "pharmacist": (OPENWHO, GCP),
+    "allied_health": (OPENWHO, WHO_ACADEMY),
+    "clinical_research": (GCP, OPENWHO),
+    "care_assistant": (OPENWHO, WHO_ACADEMY),
+    "medical_admin": (OPENWHO, MS_LEARN),
+    "teacher": (DIKSHA, SWAYAM, LEARN_HOW),
+    "tutor": (DIKSHA, LEARN_HOW),
+    "lecturer": (SWAYAM, NPTEL),
+    "instructional_designer": (SWAYAM, CANVA_SCHOOL),
+    "education_admin": (MS_LEARN, DIKSHA),
+    "recruiter": (SHRM_TOOLS, CIPD_KNOW),
+    "hr_generalist": (CIPD_KNOW, SHRM_TOOLS, SWAYAM),
+    "hr_business_partner": (CIPD_KNOW, SHRM_TOOLS),
+    "learning_development": (CIPD_KNOW, SWAYAM),
+    "compensation": (SHRM_TOOLS, MS_LEARN),
+    "operations_manager": (DARDEN_PM, NPTEL, MITX_SCM),
+    "supply_chain": (MITX_SCM, NPTEL),
+    "procurement": (MITX_SCM, SWAYAM),
+    "logistics": (MITX_SCM, NPTEL),
+    "customer_support": (HUBSPOT_SERVICE, TRAILHEAD),
+    "customer_success": (HUBSPOT_SERVICE, TRAILHEAD),
+    "ux_ui_designer": (FIGMA_LIB, FCC),
+    "graphic_designer": (CANVA_SCHOOL, FIGMA_LIB),
+    "video_media": (CANVA_SCHOOL, DIGITAL_GARAGE),
+    "fashion_stylist": (LCF_SUSTAIN, CANVA_SCHOOL, SWAYAM),
+    "fashion_designer": (LCF_SUSTAIN, SWAYAM, CANVA_SCHOOL),
+    "visual_merchandiser": (CANVA_SCHOOL, LCF_SUSTAIN, SWAYAM),
+    "fashion_buying": (LCF_SUSTAIN, MS_LEARN, SWAYAM),
+    "fashion_retail": (LCF_SUSTAIN, HUBSPOT_SERVICE),
+    "fashion_marketing": (DIGITAL_GARAGE, HUBSPOT_SOCIAL, LCF_SUSTAIN),
+    "fashion_production": (LCF_SUSTAIN, NPTEL),
+    "mechanical": (NPTEL, MIT_OCW),
+    "electrical": (NPTEL, MIT_OCW),
+    "civil": (NPTEL, MIT_OCW),
+    "manufacturing": (NPTEL, MIT_OCW),
+    "quality": (NPTEL, MIT_OCW),
+    "lawyer": (SWAYAM,),
+    "paralegal": (SWAYAM, MS_LEARN),
+    "compliance": (SWAYAM, CFI_FREE),
+    "admin_assistant": (MS_LEARN, SWAYAM),
+    "executive_assistant": (MS_LEARN, SWAYAM),
+    "office_manager": (MS_LEARN, DARDEN_PM),
+    "data_entry": (MS_LEARN, SWAYAM),
+    "retail": (HUBSPOT_SERVICE, SWAYAM),
+    "store_manager": (HUBSPOT_SERVICE, SWAYAM),
+    "chef_kitchen": (SWAYAM,),
+    "hotel_travel": (HUBSPOT_SERVICE, SWAYAM),
+    "business_analyst": (KAGGLE, MS_LEARN, AGILE_COACH),
+    "consultant": (CFI_FREE, MS_LEARN),
+    "project_manager": (DARDEN_PM, EDX_PM, AGILE_COACH, SCRUM_OPEN),
+    "general_manager": (EDX_PM, CFI_FREE),
+}
 
 # ------------------------------------------------------------------------------------------------- per role
 # role id -> (core skills employers ask for, courses in recommended order)
@@ -340,14 +504,25 @@ def roles_of(career: dict) -> list[str]:
     return roles
 
 
-def courses_for(career: dict, limit: int = 6) -> list[dict]:
-    """Recognised courses for the user's roles; early-career users see 'start' courses first."""
+def is_free(c: Course | dict) -> bool:
+    cost = c.cost if isinstance(c, Course) else c.get("cost")
+    return cost in ("free", "free_learn")
+
+
+def courses_for(career: dict, limit: int = 6, cost: str | None = None) -> list[dict]:
+    """Recognised courses for the user's roles; early-career users see 'start' courses first.
+    `cost`: None = all, "free" = free and free-to-learn, "paid" = paid only."""
     level = career.get("experience")
     out: dict[str, dict] = {}
     for rid in roles_of(career):
-        for i, c in enumerate(KIT[rid][1]):
+        pool = list(FREE.get(rid, ())) + [c for c in KIT[rid][1] if c not in FREE.get(rid, ())]
+        if cost == "free":
+            pool = [c for c in pool if is_free(c)]
+        elif cost == "paid":
+            pool = [c for c in pool if not is_free(c)]
+        for i, c in enumerate(pool):
             d = out.setdefault(c.url, {"name": c.name, "provider": c.provider, "url": c.url, "level": c.level,
-                                       "note": c.note, "roles": [], "rank": i})
+                                       "note": c.note, "cost": c.cost, "roles": [], "rank": i})
             d["rank"] = min(d["rank"], i)
             label = taxonomy.role_label(rid)
             if label not in d["roles"]:
@@ -414,4 +589,6 @@ def skill_plan(db: Database, user_id: int) -> dict:
                       "missing": sum(1 for s in skills if not s["have"])})
     return {"career_set": taxonomy.has_career(career), "has_resume": bool(text), "roles": roles,
             "gaps": job_gaps(db, user_id), "courses": courses_for(career, limit=8),
+            "courses_free": courses_for(career, limit=8, cost="free"),
+            "courses_paid": courses_for(career, limit=8, cost="paid"),
             "early": career.get("experience") in EARLY}

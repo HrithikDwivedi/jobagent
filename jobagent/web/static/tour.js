@@ -15,7 +15,7 @@
       { sel: ".home-kpis", title: "Your activity", text: "Jobs found for you (and how many are new this week), applications sent, ones in progress, interviews and offers. Click any box to open that list." },
       { sel: "#rec-h", title: "Recommended for your roles", text: "Open jobs that best match your roles and resume, which you haven't applied to yet. The circle is your match score out of 100." },
       { sel: "#apps-h", title: "Your applications", text: "Your latest applications and where each one stands." },
-      { sel: "#crs-h", title: "Courses to strengthen your profile", text: "Courses and certifications that employers in your field recognise, linked to the official provider." },
+      { sel: "#crs-h", title: "Courses to strengthen your profile", text: "Free courses first, then paid certifications, all recognised by employers in your field and linked to the official provider." },
       { sel: ".home-head .actions .btn-primary", title: "Browse jobs", text: "See every job picked for you, with filters." }
     ]},
     { match: /^\/$/, steps: [
@@ -120,7 +120,7 @@
       { title: "Skills & Prep", text: "What to learn next for your roles, and interview preparation for each job you apply to." },
       { sel: "#roles-h", title: "Skills for your roles", text: "The core skills employers expect for each of your roles. ✓ means your resume already shows it; ○ means it's worth learning or adding to your resume." },
       { sel: "#ask-h", title: "What employers are asking for", text: "Required skills in your best-matching jobs that your resume doesn't show yet. Press “I'm learning this” to track it." },
-      { sel: "#courses-h", title: "Courses & certifications", text: "Recognised courses from the official providers. Ones that need work experience are marked “Later in your career”." },
+      { sel: "#courses-h", title: "Free and paid courses", text: "Free courses (some only charge for the certificate) and paid certifications, from the official providers. Ones that need work experience are marked “Later in your career”." },
       { sel: "#gaps-h", title: "Skill gaps per application", text: "For jobs you're applying to: the missing skills, with topics to study and your progress." },
       { sel: "details.disclosure", title: "Interview preparation", text: "A preparation plan for each application: what you've shown, what's missing, and likely interview topics." }
     ]},

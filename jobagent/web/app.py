@@ -552,7 +552,8 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
                                   countries=settings_mod.all_target_countries(us)),
                 "first_name": first[:1].upper() + first[1:] if first else "",
                 "career": career, "career_set": taxonomy.has_career(career),
-                "courses": careerkit.courses_for(career, limit=4),
+                "courses_free": careerkit.courses_for(career, limit=3, cost="free"),
+                "courses_paid": careerkit.courses_for(career, limit=3, cost="paid"),
                 "resume": resume_store.canonical(db, user_id=me) is not None,
                 "whats_new": WHATS_NEW if us.get("whats_new_seen") != WHATS_NEW["version"] else None,
                 "profile_prompt": profile_mod.prompt(db, me, settings=us) if resume_store.canonical(

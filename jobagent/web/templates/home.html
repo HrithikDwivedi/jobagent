@@ -65,20 +65,12 @@
   </section>
 </div>
 
-{% if courses %}
+{% if courses_free or courses_paid %}
 <section class="card" aria-labelledby="crs-h">
-  <div class="card-title"><h2 id="crs-h">Courses to strengthen your profile</h2>{% if '/prep' not in hide %}<a class="small" href="/prep">Skills & Prep</a>{% endif %}</div>
+  <div class="card-title"><h2 id="crs-h">Courses to strengthen your profile</h2>{% if '/prep' not in hide %}<a class="small" href="/prep">All courses in Skills & Prep</a>{% endif %}</div>
   <p class="small muted">Recognised by employers for {{ cs.roles|join(', ') if cs.roles else 'your roles' }}, linked to the official provider.</p>
-  <ul class="grid grid-auto course-grid">
-    {% for c in courses %}
-      <li class="course-card">
-        <strong>{{ c.name }}</strong>
-        <span class="small muted">{{ c.provider }}</span>
-        {% if c.level == 'experienced' %}<span class="badge b-amber">Later in your career</span>{% endif %}
-        {{ m.ext(c.url, 'Official page', 'btn btn-sm') }}
-      </li>
-    {% endfor %}
-  </ul>
+  {% set show_roles = False %}{% set id_prefix = "home-crs" %}
+  {% include "_courses.html" %}
 </section>
 {% endif %}
 

@@ -55,22 +55,12 @@
 </section>
 {% endif %}
 
-{% if kit.courses %}
+{% if kit.courses_free or kit.courses_paid %}
 <section class="card" aria-labelledby="courses-h">
   <h2 id="courses-h">Recommended courses & certifications</h2>
   <p class="small muted">Recognised by employers in your field, from the official provider. {% if kit.early %}Courses suited to starting out come first.{% endif %}</p>
-  <ul class="grid grid-auto course-grid">
-    {% for c in kit.courses %}
-      <li class="course-card">
-        <strong>{{ c.name }}</strong>
-        <span class="small muted">{{ c.provider }}</span>
-        <span class="small">For: {{ c.roles|join(', ') }}</span>
-        {% if c.level == 'experienced' %}<span class="badge b-amber">Later in your career</span>{% endif %}
-        {% if c.note %}<span class="small muted">{{ c.note }}</span>{% endif %}
-        {{ m.ext(c.url, 'Official page', 'btn btn-sm') }}
-      </li>
-    {% endfor %}
-  </ul>
+  {% set courses_free, courses_paid, show_roles, id_prefix = kit.courses_free, kit.courses_paid, True, "prep-crs" %}
+  {% include "_courses.html" %}
 </section>
 {% endif %}
 
