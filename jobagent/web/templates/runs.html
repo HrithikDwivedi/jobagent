@@ -14,7 +14,7 @@
 </div>
 {% if running %}<div class="alert alert-info" role="status">A run is in progress. Refresh this page to follow it.</div>{% endif %}
 {% if deployment == 'vercel' %}
-  <div class="alert alert-info" role="note">On Vercel each run is time-boxed (about 4½ minutes; keep this page open while it runs). A run that ends “partial” continues with the remaining sources and unscored jobs on the next run — just click “Run agent now” again.</div>
+  <div class="alert alert-info" role="note">On Vercel each run is time-boxed (about 4½ minutes; keep this page open while it runs). A run that reaches its time limit starts the next one straight away to finish the remaining sources and jobs, so refresh this page after a few minutes.</div>
 {% endif %}
 
 {% if rows %}

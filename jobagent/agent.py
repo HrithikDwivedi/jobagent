@@ -43,6 +43,7 @@ class RunContext:
                       "users_processed": 0}
         self.sources: list[dict] = []
         self.errors: list[str] = []
+        self.pending: list[str] = []       # work left when the time budget ran out (continues automatically)
         self.rate_limits: list[str] = []
         with db.transaction():
             db.run("INSERT INTO runs(id, kind, trigger, status, started_at, config_json, user_id) "
@@ -67,7 +68,7 @@ class RunContext:
     def finish(self, status: str, ai: AIService | None = None):
         usage = self.db.one("SELECT COUNT(*) AS n, COALESCE(SUM(tokens_in),0) AS tin, COALESCE(SUM(tokens_out),0) AS tout, "
                             "COALESCE(SUM(cost_usd),0) AS cost FROM ai_usage WHERE run_id=? AND cached=0", (self.id,))
-        stats = dict(self.stats, rate_limits=self.rate_limits)
+        stats = dict(self.stats, rate_limits=self.rate_limits, pending=self.pending)
         with self.db.transaction():
             self.db.run("UPDATE runs SET status=?, finished_at=?, sources_json=?, stats_json=?, errors_json=?, ai_calls=?, "
                         "ai_tokens_in=?, ai_tokens_out=?, ai_cost_usd=? WHERE id=?",
@@ -312,7 +313,7 @@ def run_agent(db: Database, cfg: AppConfig, *, trigger: str = "manual", http: Ht
         for idx, uid in enumerate(order):
             if not time_left(5):
                 status = "partial"
-                ctx.errors.append(f"Time budget reached; {len(order) - idx} user(s) will be scored next run.")
+                ctx.pending.append(f"{len(order) - idx} user(s) still to score; continues automatically.")
                 break
             ust, finished = _process_user(db, cfg, ctx, uid, provider, prepare, time_left)
             per_user[uid] = ust
@@ -338,7 +339,7 @@ def run_agent(db: Database, cfg: AppConfig, *, trigger: str = "manual", http: Ht
         ctx.finish(status)
         lock_cm.__exit__(None, None, None)
     return {"run_id": ctx.id, "status": status, "stats": ctx.stats, "errors": ctx.errors[:20],
-            "per_user": per_user}
+            "pending": list(ctx.pending), "per_user": per_user}
 
 
 def _discover(db: Database, http: HttpClient, s: dict, ctx: RunContext, deadline, time_left, status: str, *,
@@ -367,7 +368,7 @@ def _discover(db: Database, http: HttpClient, s: dict, ctx: RunContext, deadline
     for idx in range(start_at, len(items)):
         if not time_left(8):
             status = "partial"
-            ctx.errors.append(f"Time budget reached; will resume at source {idx + 1}/{len(items)} next run.")
+            ctx.pending.append(f"Job search paused at source {idx + 1} of {len(items)}; continues automatically.")
             if not personal:
                 _save_cursor(db, idx)
             break
@@ -448,7 +449,7 @@ def _process_user(db: Database, cfg: AppConfig, ctx: RunContext, uid: int, provi
         for jid in todo:
             if not time_left(4):
                 finished = False
-                ctx.errors.append("Time budget reached during scoring; remaining jobs will be scored next run.")
+                ctx.pending.append("Some jobs still to score; continues automatically.")
                 break
             det = score_and_store(db, jid, profile, s, pversion, ai, ctx.id, use_ai=False, user_id=uid)
             ctx.stats["scored"] += 1

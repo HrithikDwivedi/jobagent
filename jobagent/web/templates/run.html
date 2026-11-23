@@ -30,6 +30,13 @@
       </table></div>
     {% else %}<p class="muted">No statistics recorded (the run may still be in progress).</p>{% endif %}
   </section>
+  {% if r.pending %}
+  <section class="card" aria-labelledby="pend-h">
+    <h2 id="pend-h">Continues automatically</h2>
+    <p class="small muted">This run reached its time limit; the next run picks up from here straight away.</p>
+    <ul class="small">{% for e in r.pending %}<li>{{ e }}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
   <section class="card" aria-labelledby="err-h">
     <h2 id="err-h">Errors</h2>
     {% if r.errors %}

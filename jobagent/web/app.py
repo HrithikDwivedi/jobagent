@@ -25,6 +25,7 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -88,6 +89,11 @@ EVIDENCE_TYPES = {b"\x89PNG": ("image/png", ".png"), b"\xff\xd8\xff": ("image/jp
                   b"%PDF": ("application/pdf", ".pdf")}
 USER_SECTIONS = ("candidate", "search", "weights", "limits", "auto_apply", "resume_style", "notifications", "password")
 ADMIN_SECTIONS = ("sources", "ai", "schedule")
+
+
+def _is_pending_note(msg: str) -> bool:
+    """Runs before 2026-11-23 stored "time budget reached ... next run" among their errors: it is not an error."""
+    return str(msg).startswith("Time budget reached")
 
 
 def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> FastAPI:
@@ -1304,6 +1310,8 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         for r in rows:
             r["stats"] = loads(r["stats_json"], {})
             r["errors"] = loads(r["errors_json"], []) if is_admin(request) or r.get("user_id") == uid(request) else []
+            r["pending"] = list(r["stats"].get("pending") or []) + [e for e in r["errors"] if _is_pending_note(e)]
+            r["errors"] = [e for e in r["errors"] if not _is_pending_note(e)]
         running = state["bg_run"] is not None and state["bg_run"].is_alive()
         return render(request, "runs.html", {"rows": rows, "running": running})
 
@@ -1315,6 +1323,8 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         if not r or not (is_admin(request) or r.get("user_id") == me):
             return render(request, "error.html", {"message": "Run not found."}, 404)
         r["stats"], r["errors"] = loads(r["stats_json"], {}), loads(r["errors_json"], [])
+        r["pending"] = list(r["stats"].get("pending") or []) + [e for e in r["errors"] if _is_pending_note(e)]
+        r["errors"] = [e for e in r["errors"] if not _is_pending_note(e)]
         r["sources"], r["config"] = loads(r["sources_json"], []), loads(r["config_json"], {})
         # shared discovery decisions + this user's own decisions (never another user's)
         decisions = db.all("SELECT d.*, j.title, e.name AS employer FROM run_decisions d LEFT JOIN jobs j ON j.id=d.job_id "
@@ -1344,10 +1354,15 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         kwargs = {"triggered_by": me} if is_admin(request) else \
             {"triggered_by": me, "user_ids": [me], "discover": False}
         if cfg.deployment == "vercel":
-            res = _run_now("manual", cfg.run_budget_seconds, **kwargs)
+            res = _run_now("manual", _budget(), **kwargs)
+            more = ""
+            if res["status"] == "partial" and res.get("pending"):
+                if is_admin(request) and _continue_run(request, 1):
+                    more = " The rest continues automatically; refresh Agent Runs in a few minutes."
+                else:
+                    more = " Click Run agent now again to continue with the rest."
             return redirect(f"/runs/{res['run_id']}", "ok" if res["status"] != "failed" else "error",
-                            f"Run {res['status']}." + (" Click Run agent now again to continue with the remaining sources/jobs."
-                                                       if res["status"] == "partial" else ""))
+                            f"Run {res['status']}." + more)
         if state["bg_run"] is not None and state["bg_run"].is_alive():
             return redirect("/runs", "error", "A run is already in progress.")
         t = threading.Thread(target=lambda: _run_now("manual", None, **kwargs), daemon=True)
@@ -1356,13 +1371,40 @@ def create_app(cfg: AppConfig | None = None, mailer: Mailer | None = None) -> Fa
         time.sleep(0.5)
         return redirect("/runs", "ok", "Run started. Refresh this page to follow progress.")
 
+    MAX_CHAIN = 8          # a scheduled run may continue itself up to 8 times (≈ 35 minutes of work)
+
+    def _continue_run(request: Request, chain: int) -> bool:
+        """Start the next time-boxed run now (a new serverless invocation) so the work left over is done within
+        minutes instead of at the next daily schedule. Fire-and-forget: the call returns before that run ends."""
+        if not cfg.cron_secret or chain > MAX_CHAIN:
+            return False
+        base = (cfg.public_url or str(request.base_url)).rstrip("/")
+        try:
+            httpx.get(f"{base}/api/cron/run", params={"chain": str(chain)},
+                      headers={"Authorization": f"Bearer {cfg.cron_secret}"},
+                      timeout=httpx.Timeout(connect=5.0, read=2.5, write=5.0, pool=5.0))
+        except httpx.TimeoutException:
+            return True        # delivered; that run keeps going on its own
+        except httpx.HTTPError as e:
+            _log.warning("could not continue run (chain %s): %s", chain, e)
+            return False
+        return True
+
+    def _budget() -> float | None:
+        # leave room to hand over to the next run before the platform's hard limit
+        return max(60, cfg.run_budget_seconds - 15) if cfg.deployment == "vercel" else None
+
     @app.get("/api/cron/run")
     def cron(request: Request):
         auth = request.headers.get("authorization", "")
         if not cfg.cron_secret or not secrets.compare_digest(auth, f"Bearer {cfg.cron_secret}"):
             return JSONResponse({"error": "forbidden"}, status_code=403)
-        res = _run_now("scheduled", cfg.run_budget_seconds if cfg.deployment == "vercel" else None)
-        return {"run_id": res["run_id"], "status": res["status"]}
+        raw = request.query_params.get("chain") or "0"
+        chain = int(raw) if raw.isdigit() else 0
+        res = _run_now("scheduled" if chain == 0 else "continuation", _budget())
+        continued = bool(res["status"] == "partial" and res.get("pending") and _budget()
+                         and _continue_run(request, chain + 1))
+        return {"run_id": res["run_id"], "status": res["status"], "continued": continued}
 
     @app.get("/audit", response_class=HTMLResponse)
     def audit_page(request: Request):
